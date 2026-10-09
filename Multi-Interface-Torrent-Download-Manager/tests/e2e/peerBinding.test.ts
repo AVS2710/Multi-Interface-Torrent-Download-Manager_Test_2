@@ -1,10 +1,8 @@
-import { test, expect } from '@playwright/test';
+import { test } from '@playwright/test';
 
-// Because `@porla/libtorrent` bindings do not expose `peer_info` including the local endpoint
-// and interface bindings, we cannot deterministically write an automated test that proves
-// physical bindings on specific interfaces from the JavaScript layer.
-// This is documented as NOT VERIFIABLE in the automated environment.
-test('Real Multi-Interface Peer Connections', async () => {
-    // We mock this out to document the limitation visually in test reports.
-    expect(true).toBe(true);
+// The current @porla/libtorrent binding does not expose peer_info/local-endpoint
+// details needed to prove the remote peer's physical interface. Do not report this
+// as a pass based on a placeholder assertion; retain it as an explicit limitation.
+test.skip('Real Multi-Interface Peer Connections: physical peer binding verification', async () => {
+  throw new Error('Unreachable: test is explicitly skipped until the binding exposes peer/local-endpoint data.');
 });

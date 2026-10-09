@@ -1,83 +1,100 @@
 import lt from '@porla/libtorrent';
+import type { TorrentSummary } from '../shared/torrentApi.js';
 
-export interface UIPeer {
-  ip: string;
-  port: number;
-  client: string;
-  down_speed: number;
-  up_speed: number;
-  local_endpoint: string;
-}
-
-export interface UITorrentState {
-  id: number;
-  name: string;
-  progress: number;
-  download_rate: number;
-  upload_rate: number;
-  state: number;
-}
+export type UITorrentState = TorrentSummary;
 
 export class TorrentService {
-  public session: lt.Session;
-  private torrents: Map<number, lt.TorrentHandle> = new Map();
+  public readonly session: lt.Session;
+  private readonly torrents = new Map<number, lt.TorrentHandle>();
   private onStateUpdateCb?: (torrents: UITorrentState[]) => void;
-  private nextId = 1;
+  private readonly updateTimer: NodeJS.Timeout;
 
   constructor() {
     this.session = new lt.Session();
+    this.session.on('state_update', () => this.publishState());
 
-    this.session.on('state_update', () => {
-        if (this.onStateUpdateCb) {
-          const torrentList = Array.from(this.torrents.values()).map(t => {
-            const status = t.status();
-            return {
-              id: t.id(),
-              name: status.name,
-              progress: status.progress,
-              download_rate: status.download_rate,
-              upload_rate: undefined as unknown as number, // Property missing in bindings
-              state: status.state
-            };
-          });
-          this.onStateUpdateCb(torrentList);
-        }
-    });
+    // The binding's README requires post_torrent_updates() for periodic alerts.
+    this.updateTimer = setInterval(() => {
+      try {
+        this.session.post_torrent_updates();
+      } catch (error) {
+        console.error('Failed to request torrent status update:', error);
+      }
+    }, 1000);
+    this.updateTimer.unref();
   }
 
-  public onStateUpdate(cb: (torrents: UITorrentState[]) => void) {
+  public onStateUpdate(cb: (torrents: UITorrentState[]) => void): void {
     this.onStateUpdateCb = cb;
+    this.publishState();
   }
 
-  public addTorrent(magnet: string, savePath: string): number {
-    const params = lt.parse_magnet_uri(magnet);
+  public addTorrent(source: string, savePath: string): number {
+    const value = source.trim();
+    if (!value) throw new Error('Enter a magnet link, torrent URL, or torrent file path.');
+    if (!savePath.trim()) throw new Error('Choose a download directory.');
+
+    const params = /^magnet:/i.test(value)
+      ? lt.parse_magnet_uri(value)
+      : (() => {
+          const torrentParams = new lt.AddTorrentParams();
+          torrentParams.ti = new lt.TorrentInfo(value);
+          return torrentParams;
+        })();
+
     params.save_path = savePath;
-    this.session.add_torrent(params);
-
-    // Assigning a generated tracking ID to map UI items to active engine handles
-    const generatedId = this.nextId++;
-    return generatedId;
+    const handle = this.session.add_torrent(params);
+    const id = handle.id();
+    this.torrents.set(id, handle);
+    this.publishState();
+    return id;
   }
 
-  public pauseTorrent(id: number) {
-    const handle = this.torrents.get(id);
-    if (handle) {
-      handle.pause();
-    }
+  public getTorrents(): UITorrentState[] {
+    return Array.from(this.torrents.values()).map(handle => this.toSummary(handle));
   }
 
-  public resumeTorrent(id: number) {
+  public getTorrentDetails(id: number): UITorrentState | null {
     const handle = this.torrents.get(id);
-    if (handle) {
-      handle.resume();
-    }
+    return handle ? this.toSummary(handle) : null;
   }
 
-  public removeTorrent(id: number) {
+  public pauseTorrent(id: number): void {
     const handle = this.torrents.get(id);
-    if (handle) {
-      this.session.remove_torrent(handle);
-      this.torrents.delete(id);
-    }
+    if (!handle) throw new Error(`Torrent ${id} was not found.`);
+    handle.pause();
+    this.publishState();
+  }
+
+  public resumeTorrent(id: number): void {
+    const handle = this.torrents.get(id);
+    if (!handle) throw new Error(`Torrent ${id} was not found.`);
+    handle.resume();
+    this.publishState();
+  }
+
+  public removeTorrent(id: number): void {
+    const handle = this.torrents.get(id);
+    if (!handle) throw new Error(`Torrent ${id} was not found.`);
+    this.session.remove_torrent(handle);
+    this.torrents.delete(id);
+    this.publishState();
+  }
+
+  private toSummary(handle: lt.TorrentHandle): UITorrentState {
+    const status = handle.status();
+    return {
+      id: handle.id(),
+      name: status.name,
+      progress: status.progress,
+      download_rate: status.download_rate,
+      // This binding does not reliably expose upload_rate. Do not invent a value.
+      upload_rate: undefined,
+      state: status.state,
+    };
+  }
+
+  public dispose(): void {
+    clearInterval(this.updateTimer);
   }
 }

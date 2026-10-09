@@ -1,98 +1,81 @@
-import React, { useState, useEffect } from 'react';
-
-interface Network {
-  id: string;
-  name: string;
-  type: string;
-  ipv4Addresses: string[];
-  isUp: boolean;
-  hasInternet: boolean;
-  state: string;
-  enabled: boolean;
-  priority: string;
-  metered: boolean;
-}
+import React, { useEffect, useState } from 'react';
+import type { NetworkInfo } from '../../shared/torrentApi.js';
 
 const Networks: React.FC = () => {
-  const [networks, setNetworks] = useState<Network[]>([]);
-
-  const torrentApi = (window as unknown as { torrentApi?: { getNetworks: () => Promise<Network[]>, updateNetworkPreferences: (id: string, pref: Record<string, unknown>) => Promise<void> } }).torrentApi;
+  const [networks, setNetworks] = useState<NetworkInfo[]>([]);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (torrentApi) {
-      torrentApi.getNetworks().then(setNetworks).catch(console.error);
+    const api = window.torrentApi;
+    if (!api) {
+      setError('The desktop bridge did not load. Restart MultiTorrent.');
+      return;
     }
-  }, [torrentApi]);
+    api.getNetworks().then(setNetworks).catch((reason: unknown) => {
+      setError(reason instanceof Error ? reason.message : 'Could not load network interfaces.');
+    });
+  }, []);
 
-  const toggleEnabled = (id: string, current: boolean) => {
-    if (torrentApi) {
-      torrentApi.updateNetworkPreferences(id, { enabled: !current }).then(() => {
-        setNetworks(prev => prev.map(n => n.id === id ? { ...n, enabled: !current } : n));
-      });
+  const updateNetwork = async (id: string, preferences: Record<string, unknown>) => {
+    const api = window.torrentApi;
+    if (!api) {
+      setError('The desktop bridge is unavailable.');
+      return;
+    }
+    setError(null);
+    try {
+      await api.updateNetworkPreferences(id, preferences);
+      setNetworks(current => current.map(network => network.id === id
+        ? { ...network, ...preferences }
+        : network));
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Could not update network preferences.');
     }
   };
 
-  const toggleMetered = (id: string, current: boolean) => {
-    if (torrentApi) {
-      torrentApi.updateNetworkPreferences(id, { metered: !current }).then(() => {
-        setNetworks(prev => prev.map(n => n.id === id ? { ...n, metered: !current } : n));
-      });
-    }
-  };
-
-  // Group by gateways to detect shared upstream connectivity
-  const getSharedGatewayWarning = (network: Network) => {
-    // This is a naive heuristic for UI display: if the network type is different but same subnet/gateway exists, warn.
-    // Given we only have IP addresses here, we'll just check if it shares an IP range with another type.
-    const hasSimilarIP = networks.some(n =>
-      n.id !== network.id &&
-      n.ipv4Addresses.some(ip => network.ipv4Addresses.some(nip => nip.substring(0, nip.lastIndexOf('.')) === ip.substring(0, ip.lastIndexOf('.'))))
+  const getSharedGatewayWarning = (network: NetworkInfo) => {
+    const hasSimilarIP = networks.some(other =>
+      other.id !== network.id &&
+      other.ipv4Addresses.some(address =>
+        network.ipv4Addresses.some(otherAddress =>
+          otherAddress.substring(0, otherAddress.lastIndexOf('.')) === address.substring(0, address.lastIndexOf('.'))
+        )
+      )
     );
-    return hasSimilarIP ? "⚠ Warning: This interface may share a gateway with another network." : null;
+    return hasSimilarIP ? 'This interface may share an upstream network with another interface.' : null;
   };
 
   return (
     <div className="p-4">
       <h2 className="text-2xl font-bold mb-4">Networks</h2>
       <p className="text-sm text-gray-400 mb-6">
-        Multi-network downloading works best when your connections use independent Internet connections, such as home Wi-Fi + mobile tethering. Two adapters connected to the same router usually share the same upstream connection and may not increase total Internet bandwidth.
+        Multiple interfaces can help only when they provide independent Internet paths. Adapters connected to the same router usually share the same upstream bandwidth.
       </p>
+      {error && <p role="alert" className="mb-4 rounded border border-red-700 bg-red-950/50 p-3 text-sm text-red-300">{error}</p>}
+      {networks.length === 0 && !error && <p className="text-gray-400">No external IPv4 interfaces detected.</p>}
       <div className="grid gap-4">
-        {networks.map(n => {
-          const warning = getSharedGatewayWarning(n);
+        {networks.map(network => {
+          const warning = getSharedGatewayWarning(network);
           return (
-            <div key={n.id} className="border p-4 rounded-md bg-gray-50 dark:bg-gray-800 flex flex-col md:flex-row justify-between items-start md:items-center space-y-4 md:space-y-0">
+            <div key={network.id} className="border p-4 rounded-md bg-gray-50 dark:bg-gray-800 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
               <div className="flex-1">
-                <h3 className="font-bold text-lg">{n.name} ({n.type})</h3>
-                <p className="text-sm text-gray-600 dark:text-gray-400">{n.ipv4Addresses.join(', ')}</p>
+                <h3 className="font-bold text-lg">{network.name} ({network.type})</h3>
+                <p className="text-sm text-gray-600 dark:text-gray-400">{network.ipv4Addresses.join(', ')}</p>
                 <p className="text-sm text-gray-500 mt-1">
-                  Status: <span className={n.hasInternet ? 'text-green-600' : 'text-red-500'}>{n.state}</span>
+                  Status: <span className={network.hasInternet ? 'text-green-600' : 'text-red-500'}>{network.state}</span>
                 </p>
-                {warning && <p className="text-sm text-yellow-600 mt-1">{warning}</p>}
-
-                {n.metered && (
-                  <p className="text-sm text-orange-500 mt-1">⚠ Metered connection. Using it may consume mobile data.</p>
-                )}
+                {warning && <p className="text-sm text-yellow-600 mt-1">⚠ {warning}</p>}
+                {network.metered && <p className="text-sm text-orange-500 mt-1">⚠ Metered connection: using it may consume mobile data.</p>}
               </div>
-              <div className="flex flex-col space-y-2 w-full md:w-auto">
-                <label className="flex items-center space-x-2 text-sm">
-                  <input type="checkbox" checked={n.enabled} onChange={() => toggleEnabled(n.id, n.enabled)} className="form-checkbox h-4 w-4 text-blue-600" />
+              <div className="flex flex-col gap-2 w-full md:w-auto">
+                <label className="flex items-center gap-2 text-sm">
+                  <input type="checkbox" checked={network.enabled} onChange={event => void updateNetwork(network.id, { enabled: event.target.checked })} />
                   <span>Use for torrents</span>
                 </label>
-                <label className="flex items-center space-x-2 text-sm">
-                  <input type="checkbox" checked={n.metered} onChange={() => toggleMetered(n.id, n.metered)} className="form-checkbox h-4 w-4 text-orange-600" />
+                <label className="flex items-center gap-2 text-sm">
+                  <input type="checkbox" checked={network.metered} onChange={event => void updateNetwork(network.id, { metered: event.target.checked })} />
                   <span>Metered connection</span>
                 </label>
-                <div className="pt-2 border-t mt-2 border-gray-200 dark:border-gray-700">
-                  <div className="flex flex-col mb-1 text-sm">
-                     <label className="text-gray-600 dark:text-gray-400 mb-1">Download Limit (KB/s)</label>
-                     <input type="number" placeholder="0 (Unlimited)" className="p-1 text-sm border rounded bg-white dark:bg-gray-700 w-32" />
-                  </div>
-                  <div className="flex flex-col text-sm">
-                     <label className="text-gray-600 dark:text-gray-400 mb-1">Upload Limit (KB/s)</label>
-                     <input type="number" placeholder="0 (Unlimited)" className="p-1 text-sm border rounded bg-white dark:bg-gray-700 w-32" />
-                  </div>
-                </div>
               </div>
             </div>
           );
