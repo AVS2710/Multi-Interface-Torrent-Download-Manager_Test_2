@@ -59,10 +59,9 @@ const Settings: React.FC = () => {
               <input type="checkbox" checked={(settings.enableDht || 'true') === 'true'} onChange={event => void handleChange('enableDht', event.target.checked ? 'true' : 'false')} />
               <span>Enable DHT (Distributed Hash Table)</span>
             </label>
-            <label className="flex items-center space-x-2">
-              <input type="checkbox" checked={(settings.enablePex || 'true') === 'true'} onChange={event => void handleChange('enablePex', event.target.checked ? 'true' : 'false')} />
-              <span>Enable PEX (Peer Exchange)</span>
-            </label>
+            <p className="text-sm text-gray-400">
+              Peer Exchange (PEX) uses libtorrent's built-in defaults. The installed Node binding does not expose a compatible PEX toggle.
+            </p>
           </div>
         </section>
         <section>

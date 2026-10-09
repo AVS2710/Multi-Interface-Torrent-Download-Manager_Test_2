@@ -4,7 +4,6 @@ import { defineConfig } from 'vite';
 // Sandboxed Electron preloads must be unambiguously CommonJS. Keep Electron
 // external so the bundle uses Electron's restricted preload require().
 export default defineConfig({
-  configFile: false,
   build: {
     outDir: 'dist/main/preload',
     emptyOutDir: true,

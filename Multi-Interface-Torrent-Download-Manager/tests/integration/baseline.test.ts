@@ -1,34 +1,51 @@
 import { describe, it, expect } from 'vitest';
 import { TorrentService } from '../../src/main/TorrentService.js';
 import lt from '@porla/libtorrent';
-import path from 'path';
+import createTorrent from 'create-torrent';
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
 
 describe('Baseline Torrent Lifecycle (Real Engine)', () => {
-  it('should initialize real session, add local torrent, and observe real events', async () => {
+  it('should initialize a real session, add a valid local torrent, and observe real events', async () => {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'multitorrent-baseline-'));
+    const payloadPath = path.join(tempDir, 'test-file.txt');
+    const torrentPath = path.join(tempDir, 'test.torrent');
     const service = new TorrentService();
-    expect(service.session).toBeDefined();
 
-    const torrentPath = path.join(process.cwd(), 'tests/fixtures/test.torrent');
-    // const torrentBuf = fs.readFileSync(torrentPath);
+    try {
+      await fs.writeFile(payloadPath, 'Hello, world!');
+      const torrentData = await new Promise<Buffer>((resolve, reject) => {
+        createTorrent(payloadPath, {
+          name: 'test-file.txt',
+          announceList: [],
+          pieceLength: 16384,
+          creationDate: new Date('2026-10-09T00:00:00Z'),
+        }, (error, torrent) => error ? reject(error) : resolve(torrent));
+      });
+      await fs.writeFile(torrentPath, torrentData);
 
-    let added = false;
-    service.session.on('add_torrent', () => {
-      added = true;
-    });
+      expect(service.session).toBeDefined();
+      let added = false;
+      service.session.on('add_torrent', () => {
+        added = true;
+      });
 
-    const ti = new lt.TorrentInfo(torrentPath);
-    expect(ti.name()).toBe('test-file.txt');
-    expect(ti.v1()).toBeDefined();
+      const info = new lt.TorrentInfo(torrentPath);
+      expect(info.name()).toBe('test-file.txt');
+      expect(info.v1()).toBeDefined();
 
-    const params = new lt.AddTorrentParams();
-    params.ti = ti;
-    params.save_path = '/tmp';
+      const params = new lt.AddTorrentParams();
+      params.ti = info;
+      params.save_path = tempDir;
+      service.session.add_torrent(params);
 
-    service.session.add_torrent(params);
-
-    // Give it a moment to process the async add_torrent alert
-    await new Promise(r => setTimeout(r, 500));
-
-    expect(added).toBe(true);
+      await new Promise(resolve => setTimeout(resolve, 500));
+      expect(added).toBe(true);
+      expect(service.session.get_torrents().length).toBeGreaterThan(0);
+    } finally {
+      service.dispose();
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
   });
 });

@@ -20,7 +20,6 @@ const allowedSettingKeys = new Set([
   'downloadDir',
   'theme',
   'enableDht',
-  'enablePex',
   'globalDownloadLimit',
   'globalUploadLimit',
 ]);
@@ -74,7 +73,6 @@ async function settingsWithDefaults(): Promise<Record<string, string>> {
   return {
     theme: 'system',
     enableDht: 'true',
-    enablePex: 'true',
     globalDownloadLimit: '0',
     globalUploadLimit: '0',
     ...saved,
@@ -94,7 +92,6 @@ async function applySavedSettings(): Promise<void> {
   const settings = await settingsWithDefaults();
   torrentService.session.apply_settings({
     enable_dht: settings.enableDht !== 'false',
-    enable_pex: settings.enablePex !== 'false',
     download_rate_limit: limitToBytesPerSecond(settings.globalDownloadLimit, 'Download limit'),
     upload_rate_limit: limitToBytesPerSecond(settings.globalUploadLimit, 'Upload limit'),
   });
