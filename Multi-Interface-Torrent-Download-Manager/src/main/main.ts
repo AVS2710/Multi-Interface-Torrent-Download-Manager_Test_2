@@ -261,7 +261,7 @@ ipcMain.handle('parse-torrent-file', async (_event, filePath: string) => {
     const info = new lt.TorrentInfo(filePath);
     return { name: info.name() };
   } catch (error) {
-    throw new Error(`Failed to read torrent file: ${errorMessage(error)}`);
+    throw new Error(`Failed to read torrent file: ${errorMessage(error)}`, { cause: error });
   }
 });
 
@@ -282,7 +282,7 @@ ipcMain.handle('add-torrent', async (_event, source: string, savePath: string) =
   } catch (error) {
     const message = errorMessage(error);
     notify(`Could not add torrent: ${message}`);
-    throw new Error(message);
+    throw new Error(message, { cause: error });
   }
 });
 
