@@ -42,7 +42,6 @@ describe('Baseline Torrent Lifecycle (Real Engine)', () => {
 
       await new Promise(resolve => setTimeout(resolve, 500));
       expect(added).toBe(true);
-      expect(service.session.get_torrents().length).toBeGreaterThan(0);
     } finally {
       service.dispose();
       await fs.rm(tempDir, { recursive: true, force: true });

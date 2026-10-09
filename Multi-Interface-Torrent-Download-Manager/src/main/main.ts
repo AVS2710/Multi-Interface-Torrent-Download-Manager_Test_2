@@ -276,7 +276,7 @@ ipcMain.handle('add-torrent', async (_event, source: string, savePath: string) =
     if (!stat.isDirectory()) throw new Error('The download location is not a directory.');
 
     const resolvedSource = await resolveTorrentSource(source);
-    const id = torrentService.addTorrent(resolvedSource, downloadPath);
+    const id = await torrentService.addTorrent(resolvedSource, downloadPath);
     notify('Torrent added to the session.');
     return { id };
   } catch (error) {
