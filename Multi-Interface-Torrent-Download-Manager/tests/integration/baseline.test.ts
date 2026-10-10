@@ -26,22 +26,14 @@ describe('Baseline Torrent Lifecycle (Real Engine)', () => {
       await fs.writeFile(torrentPath, torrentData);
 
       expect(service.session).toBeDefined();
-      let added = false;
-      service.session.on('add_torrent', () => {
-        added = true;
-      });
 
       const info = new lt.TorrentInfo(torrentPath);
       expect(info.name()).toBe('test-file.txt');
       expect(info.v1()).toBeDefined();
 
-      const params = new lt.AddTorrentParams();
-      params.ti = info;
-      params.save_path = tempDir;
-      service.session.add_torrent(params);
-
-      await new Promise(resolve => setTimeout(resolve, 500));
-      expect(added).toBe(true);
+      const id = await service.addTorrent(torrentPath, tempDir);
+      expect(Number.isSafeInteger(id)).toBe(true);
+      expect(service.getTorrentDetails(id)?.name).toBe('test-file.txt');
     } finally {
       service.dispose();
       await fs.rm(tempDir, { recursive: true, force: true });

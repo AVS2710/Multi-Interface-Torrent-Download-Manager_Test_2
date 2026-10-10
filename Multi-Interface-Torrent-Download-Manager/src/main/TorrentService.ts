@@ -7,6 +7,7 @@ interface PendingAdd {
   resolve: (id: number) => void;
   reject: (error: Error) => void;
   timer: NodeJS.Timeout;
+  preExistingIds: Set<number>;
 }
 
 function isTorrentHandle(value: unknown): value is lt.TorrentHandle {
@@ -52,14 +53,23 @@ export class TorrentService {
   constructor() {
     this.session = new lt.Session();
     this.session.on('add_torrent', (...args: unknown[]) => {
-      const handle = findTorrentHandle(args);
-      if (handle) {
-        const id = handle.id();
+      // @porla/libtorrent emits add_torrent without passing a handle argument.
+      // Query the session when the alert arrives, while retaining support for
+      // bindings that do provide the handle directly.
+      const handles = new Map<number, lt.TorrentHandle>();
+      for (const handle of this.listSessionTorrents()) handles.set(handle.id(), handle);
+      const eventHandle = findTorrentHandle(args);
+      if (eventHandle) handles.set(eventHandle.id(), eventHandle);
+
+      for (const [id, handle] of handles) {
         this.torrents.set(id, handle);
-        const pending = this.pendingAdds.shift();
-        if (pending) {
-          clearTimeout(pending.timer);
-          pending.resolve(id);
+        const pendingIndex = this.pendingAdds.findIndex(pending => !pending.preExistingIds.has(id));
+        if (pendingIndex >= 0) {
+          const [pending] = this.pendingAdds.splice(pendingIndex, 1);
+          if (pending) {
+            clearTimeout(pending.timer);
+            pending.resolve(id);
+          }
         }
       }
       this.publishState();
@@ -75,6 +85,21 @@ export class TorrentService {
       }
     }, 1000);
     this.updateTimer.unref();
+  }
+
+  private listSessionTorrents(): lt.TorrentHandle[] {
+    // Keep this structural because this package's declarations vary by release,
+    // even though libtorrent exposes session.get_torrents() at runtime.
+    const session = this.session as unknown as { get_torrents?: () => unknown };
+    if (typeof session.get_torrents !== 'function') return [];
+
+    try {
+      const handles = session.get_torrents.call(this.session);
+      return Array.isArray(handles) ? handles.filter(isTorrentHandle) : [];
+    } catch (error) {
+      console.error('Failed to enumerate libtorrent torrent handles:', error);
+      return [];
+    }
   }
 
   public onStateUpdate(cb: (torrents: UITorrentState[]) => void): void {
@@ -102,10 +127,12 @@ export class TorrentService {
       return Promise.reject(error instanceof Error ? error : new Error(String(error)));
     }
 
+    const preExistingIds = new Set(this.listSessionTorrents().map(handle => handle.id()));
     return new Promise<number>((resolve, reject) => {
       const pending: PendingAdd = {
         resolve,
         reject,
+        preExistingIds,
         timer: setTimeout(() => {
           const index = this.pendingAdds.indexOf(pending);
           if (index >= 0) this.pendingAdds.splice(index, 1);
@@ -117,7 +144,7 @@ export class TorrentService {
       // the binding may emit the add_torrent event synchronously or asynchronously.
       this.pendingAdds.push(pending);
       try {
-        this.session.add_torrent(params); // This binding returns void; the handle arrives through its event.
+        this.session.add_torrent(params); // This binding returns void; synchronize the handle when its event fires.
       } catch (error) {
         clearTimeout(pending.timer);
         const index = this.pendingAdds.indexOf(pending);

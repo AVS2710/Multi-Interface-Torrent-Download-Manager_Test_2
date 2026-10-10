@@ -60,7 +60,18 @@ jobs:
       - name: Build production application
         run: npm run build
       - name: Electron end-to-end tests
+        id: e2e
         run: xvfb-run -a npm run test:e2e
+      - name: Upload Playwright diagnostics on failure
+        if: failure() && steps.e2e.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-diagnostics
+          path: |
+            Multi-Interface-Torrent-Download-Manager/test-results/
+            Multi-Interface-Torrent-Download-Manager/playwright-report/
+          if-no-files-found: warn
+          retention-days: 7
       - name: Package Linux AppImage
         run: npm run package:linux
       - name: Upload AppImage

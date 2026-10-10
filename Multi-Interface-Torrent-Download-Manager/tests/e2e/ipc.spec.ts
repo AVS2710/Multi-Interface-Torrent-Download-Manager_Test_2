@@ -142,7 +142,7 @@ test.describe('Electron IPC and Preload Bridge', () => {
       await expect(page.getByRole('heading', { name: 'Add Torrent' })).toHaveCount(0);
       await expect(page.getByText('multitorrent-e2e-file.txt', { exact: true })).toBeVisible({ timeout: 10_000 });
     } finally {
-      await app.close();
+      await closeApp(app);
       await fs.rm(workDir, { recursive: true, force: true });
     }
   });
