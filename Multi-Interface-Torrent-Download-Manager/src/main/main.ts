@@ -11,7 +11,6 @@ import {
   saveSelectedNetwork,
   getSavedSettings,
   saveSetting,
-  closeDb,
   type SelectedNetwork,
 } from './db.js';
 
@@ -230,24 +229,14 @@ let shutdownStarted = false;
 app.on('before-quit', event => {
   if (shutdownStarted) return;
   shutdownStarted = true;
-
-  // Native libtorrent threads can keep Electron's Node process alive even after
-  // app.exit(). Close SQLite on the normal path, but keep a bounded process-exit
-  // fallback armed until the process actually terminates.
   event.preventDefault();
-  const shutdownTimeout = setTimeout(() => {
-    console.error('Shutdown deadline exceeded; forcing process exit after cleanup timeout.');
-    process.exit(0);
-  }, 2500);
 
+  // libtorrent's native session can block Electron's app.exit() path while its
+  // native worker threads are being torn down. Stop JS polling and pending work,
+  // then terminate the process directly. Settings/torrent DB writes are
+  // individually committed before their IPC handlers return.
   torrentService.dispose();
-  void closeDb()
-    .catch(error => console.error('Failed to close the application database during shutdown:', error))
-    .finally(() => {
-      // Do not clear shutdownTimeout here: app.exit() may not terminate while
-      // native engine handles remain, and the timeout is our final fail-safe.
-      app.exit(0);
-    });
+  process.exit(0);
 });
 
 ipcMain.handle('get-networks', async () => {
