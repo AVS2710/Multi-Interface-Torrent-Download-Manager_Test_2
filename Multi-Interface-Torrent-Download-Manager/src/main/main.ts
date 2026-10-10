@@ -221,7 +221,7 @@ ipcMain.handle('parse-torrent-file', async (_event, filePath: string) => {
     const info = new lt.TorrentInfo(filePath);
     return { name: info.name() };
   } catch (error) {
-    throw new Error(`Failed to parse torrent file: ${userFacingError(error)}`);
+    throw new Error(`Failed to parse torrent file: ${userFacingError(error)}`, { cause: error });
   }
 });
 
