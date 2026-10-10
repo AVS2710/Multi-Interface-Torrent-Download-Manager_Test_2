@@ -20,6 +20,12 @@ const launchApp = (userDataDir?: string) => electron.launch({
 async function closeApp(app: Awaited<ReturnType<typeof launchApp>>): Promise<void> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
+    // ElectronApplication.close() closes Playwright's browser context; it does
+    // not reliably request app.quit() for this native-session app. Request a
+    // graceful Electron quit explicitly, after the evaluate IPC reply is sent.
+    await app.evaluate(({ app }) => {
+      setImmediate(() => app.quit());
+    });
     await Promise.race([
       app.close(),
       new Promise<never>((_resolve, reject) => {
