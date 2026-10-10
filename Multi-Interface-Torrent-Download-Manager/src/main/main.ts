@@ -89,7 +89,13 @@ function createWindow(): void {
   });
 
   const window = mainWindow;
-  window.once('ready-to-show', () => window.show());
+  window.once('ready-to-show', () => {
+    if (process.env.MULTITORRENT_SMOKE_TEST) console.info('MULTITORRENT_WINDOW_READY');
+    window.show();
+  });
+  window.webContents.once('did-finish-load', () => {
+    if (process.env.MULTITORRENT_SMOKE_TEST) console.info('MULTITORRENT_RENDERER_LOADED');
+  });
   window.webContents.on('did-fail-load', (_event, code, description, url) => {
     if (code !== -3) console.error('Renderer failed to load:', { code, description, url });
   });

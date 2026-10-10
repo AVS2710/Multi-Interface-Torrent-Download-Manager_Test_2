@@ -60,8 +60,8 @@ jobs:
           set -uo pipefail
           echo "Resolved module entry:"
           node -e "console.log(require.resolve('@porla/libtorrent'))"
-          echo "Verify the native binding loads in Node:"
-          node -e "const lt=require('@porla/libtorrent'); const s=new lt.Session(); console.log('Session constructed:', Boolean(s))"
+          echo "Verify the native binding exports the Session API without starting a long-lived session:"
+          node -e "const lt=require('@porla/libtorrent'); if(typeof lt.Session !== 'function') throw new Error('Session export missing'); console.log('Native binding exports Session')"
           echo "Native binaries shipped by the package:"
           mapfile -t addons < <(find node_modules/@porla/libtorrent -type f -name '*.node' -print)
           if [ "${#addons[@]}" -eq 0 ]; then
@@ -86,14 +86,33 @@ jobs:
           appimage="$(find release -maxdepth 1 -type f -name '*.AppImage' -print -quit)"
           test -n "$appimage"
           chmod +x "$appimage"
-          set +e
-          APPIMAGE_EXTRACT_AND_RUN=1 timeout 20s xvfb-run -a "$appimage"
-          status=$?
-          set -e
-          if [ "$status" -ne 124 ]; then
-            echo "Expected the AppImage to remain running until timeout; exit code: $status"
-            exit 1
-          fi
+          log_file="$(mktemp)"
+          export MULTITORRENT_SMOKE_TEST=1
+          export APPIMAGE_EXTRACT_AND_RUN=1
+          xvfb-run -a "$appimage" >"$log_file" 2>&1 &
+          app_pid=$!
+          cleanup() {
+            kill "$app_pid" 2>/dev/null || true
+            wait "$app_pid" 2>/dev/null || true
+            cat "$log_file"
+            rm -f "$log_file"
+          }
+          trap cleanup EXIT
+          for _ in $(seq 1 30); do
+            if grep -q 'MULTITORRENT_RENDERER_LOADED' "$log_file" && grep -q 'MULTITORRENT_WINDOW_READY' "$log_file"; then
+              echo "AppImage opened its renderer and emitted ready-to-show."
+              exit 0
+            fi
+            if ! kill -0 "$app_pid" 2>/dev/null; then
+              echo "AppImage exited before opening its window."
+              cat "$log_file"
+              exit 1
+            fi
+            sleep 1
+          done
+          echo "AppImage did not report a loaded renderer and visible window within 30 seconds."
+          cat "$log_file"
+          exit 1
       - name: Upload AppImage
         uses: actions/upload-artifact@v4
         with:
