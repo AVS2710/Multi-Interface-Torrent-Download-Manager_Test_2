@@ -1,10 +1,14 @@
 import sqlite3 from 'sqlite3';
+import fs from 'node:fs/promises';
 import { open, Database } from 'sqlite';
 import * as path from 'path';
 
 let dbInstance: Database | null = null;
 
 export async function initDb(userDataPath: string): Promise<Database> {
+  // Custom Electron --user-data-dir paths used by tests may not exist yet.
+  // Create the directory before SQLite attempts to open its database file.
+  await fs.mkdir(userDataPath, { recursive: true });
   dbInstance = await open({
     filename: path.join(userDataPath, 'multitorrent.sqlite'),
     driver: sqlite3.Database
