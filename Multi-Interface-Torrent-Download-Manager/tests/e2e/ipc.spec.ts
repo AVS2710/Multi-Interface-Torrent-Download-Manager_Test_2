@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { _electron as electron } from 'playwright';
+import { _electron as electron, type Page } from 'playwright';
 import createTorrent from 'create-torrent';
 import fs from 'node:fs/promises';
 import os from 'node:os';
@@ -31,9 +31,28 @@ async function waitForFirstWindow(app: Awaited<ReturnType<typeof launchApp>>) {
   });
 
   try {
-    return await Promise.race([app.firstWindow(), timeout]);
+    const page = await Promise.race([app.firstWindow(), timeout]);
+    return { page, output };
   } finally {
     if (timer) clearTimeout(timer);
+  }
+}
+
+async function waitForRenderer(page: Page, output: string[]): Promise<void> {
+  const rendererErrors: string[] = [];
+  page.on('console', message => {
+    if (message.type() === 'error') rendererErrors.push(message.text());
+  });
+  page.on('pageerror', error => rendererErrors.push(error.stack ?? error.message));
+  try {
+    await page.waitForLoadState('domcontentloaded', { timeout: 15_000 });
+  } catch (error) {
+    throw new Error(
+      `Renderer did not reach DOMContentLoaded. URL: ${page.url()}\\n` +
+      `Electron output:\\n${output.join('') || '(no process output captured)'}\\n` +
+      `Renderer errors:\\n${rendererErrors.join('\\n') || '(none captured)'}\\n` +
+      String(error),
+    );
   }
 }
 
@@ -41,8 +60,8 @@ test.describe('Electron IPC and Preload Bridge', () => {
   test('renderer loads the sandboxed preload and invokes getNetworks over IPC', async () => {
     const app = await launchApp();
     try {
-      const page = await waitForFirstWindow(app);
-      await page.waitForLoadState('domcontentloaded');
+      const { page, output } = await waitForFirstWindow(app);
+      await waitForRenderer(page, output);
       await expect(page.getByRole('heading', { name: 'MultiTorrent' })).toBeVisible();
 
       await expect.poll(() => page.evaluate(() => typeof window.torrentApi?.getNetworks)).toBe('function');
@@ -91,8 +110,8 @@ test.describe('Electron IPC and Preload Bridge', () => {
 
     const app = await launchApp(userDataDir);
     try {
-      const page = await app.firstWindow();
-      await page.waitForLoadState('domcontentloaded');
+      const { page, output } = await waitForFirstWindow(app);
+      await waitForRenderer(page, output);
       await page.getByRole('button', { name: /add torrent/i }).first().click();
       await expect(page.getByRole('heading', { name: 'Add Torrent' })).toBeVisible();
 
