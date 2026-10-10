@@ -58,6 +58,12 @@ try {
     & npm ci
     if ($LASTEXITCODE -ne 0) { throw 'Could not install native binding build tools.' }
 
+    # This older source checkout pins cmake-js 6 and its old node-abi table,
+    # which does not know recent Electron major versions. Upgrade the transient
+    # build tool only; do not change the upstream checkout or its lockfile.
+    & npm install --no-save --package-lock=false 'cmake-js@latest'
+    if ($LASTEXITCODE -ne 0) { throw 'Could not install a current cmake-js toolchain.' }
+
     $cmakeJs = Join-Path $nativeRoot 'node_modules\.bin\cmake-js.cmd'
     if (-not (Test-Path $cmakeJs)) { throw ("cmake-js was not installed at " + $cmakeJs) }
     # Resolve Electron from the application project: this script is currently
