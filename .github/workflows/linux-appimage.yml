@@ -1,0 +1,122 @@
+name: Linux AppImage
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - "Multi-Interface-Torrent-Download-Manager/**"
+      - ".github/workflows/linux-appimage.yml"
+  pull_request:
+    paths:
+      - "Multi-Interface-Torrent-Download-Manager/**"
+      - ".github/workflows/linux-appimage.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: linux-appimage-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    defaults:
+      run:
+        working-directory: Multi-Interface-Torrent-Download-Manager
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: Multi-Interface-Torrent-Download-Manager/package-lock.json
+      - name: Install native build and Electron runtime dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential pkg-config libtorrent-rasterbar-dev libsqlite3-dev xvfb libnspr4 libnss3 libatk-bridge2.0-0 libgtk-3-0 libxkbcommon0 libasound2 libatspi2.0-0 libcups2 libdrm2 libgbm1 libxshmfence1 libxrandr2 libxcomposite1 libxdamage1 libxfixes3 libxrender1 libxext6 libx11-xcb1 libxss1 libpango-1.0-0 libcairo2 libatk1.0-0 libgdk-pixbuf2.0-0
+      - name: Install dependencies
+        run: npm ci
+      - name: Ensure Electron binary is present
+        run: |
+          unset ELECTRON_SKIP_BINARY_DOWNLOAD ELECTRON_SKIP_DOWNLOAD
+          node node_modules/electron/install.js
+          node -e "const fs = require('node:fs'); const p = require('electron'); if (typeof p !== 'string' || !fs.existsSync(p)) throw new Error('Electron binary missing'); console.log(p)"
+      - name: Build native dependencies for Node integration tests
+        run: npm rebuild sqlite3 --build-from-source
+      - name: Type check
+        run: npm run typecheck
+      - name: Lint
+        run: npm run lint
+      - name: Unit tests
+        run: npm run test:unit
+      - name: Integration tests
+        run: npm run test:integration
+      - name: Rebuild native dependencies for Electron
+        run: npx electron-builder install-app-deps
+      - name: Inspect native torrent module dependencies
+        shell: bash
+        run: |
+          set -uo pipefail
+          echo "Resolved module entry:"
+          node -e "console.log(require.resolve('@porla/libtorrent'))"
+          echo "Verify the native binding exports the Session API without starting a long-lived session:"
+          node -e "const lt=require('@porla/libtorrent'); if(typeof lt.Session !== 'function') throw new Error('Session export missing'); console.log('Native binding exports Session')"
+          echo "Native binaries shipped by the package:"
+          mapfile -t addons < <(find node_modules/@porla/libtorrent -type f -name '*.node' -print)
+          if [ "${#addons[@]}" -eq 0 ]; then
+            echo "No native .node binary found under @porla/libtorrent"
+            find node_modules/@porla/libtorrent -maxdepth 4 -type f -print
+            exit 1
+          fi
+          for addon in "${addons[@]}"; do
+            echo "===== $addon ====="
+            ldd "$addon" || true
+          done
+      - name: Build production application
+        run: npm run build
+      - name: Real Electron end-to-end tests
+        run: xvfb-run -a npm run test:e2e
+      - name: Package Linux AppImage
+        run: npx electron-builder --linux AppImage
+      - name: Smoke-test packaged AppImage
+        shell: bash
+        run: |
+          set -euo pipefail
+          appimage="$(find release -maxdepth 1 -type f -name '*.AppImage' -print -quit)"
+          test -n "$appimage"
+          chmod +x "$appimage"
+          log_file="$(mktemp)"
+          export MULTITORRENT_SMOKE_TEST=1
+          export APPIMAGE_EXTRACT_AND_RUN=1
+          xvfb-run -a "$appimage" >"$log_file" 2>&1 &
+          app_pid=$!
+          cleanup() {
+            kill "$app_pid" 2>/dev/null || true
+            wait "$app_pid" 2>/dev/null || true
+            cat "$log_file"
+            rm -f "$log_file"
+          }
+          trap cleanup EXIT
+          for _ in $(seq 1 30); do
+            if grep -q 'MULTITORRENT_RENDERER_LOADED' "$log_file" && grep -q 'MULTITORRENT_WINDOW_READY' "$log_file"; then
+              echo "AppImage opened its renderer and emitted ready-to-show."
+              exit 0
+            fi
+            if ! kill -0 "$app_pid" 2>/dev/null; then
+              echo "AppImage exited before opening its window."
+              cat "$log_file"
+              exit 1
+            fi
+            sleep 1
+          done
+          echo "AppImage did not report a loaded renderer and visible window within 30 seconds."
+          cat "$log_file"
+          exit 1
+      - name: Upload AppImage
+        uses: actions/upload-artifact@v4
+        with:
+          name: MultiTorrent-Linux-AppImage
+          path: Multi-Interface-Torrent-Download-Manager/release/*.AppImage
+          if-no-files-found: error
+          retention-days: 14

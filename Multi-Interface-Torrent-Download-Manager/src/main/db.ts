@@ -1,10 +1,12 @@
 import sqlite3 from 'sqlite3';
 import { open, Database } from 'sqlite';
-import * as path from 'path';
+import * as path from 'node:path';
+import { mkdir } from 'node:fs/promises';
 
 let dbInstance: Database | null = null;
 
 export async function initDb(userDataPath: string): Promise<Database> {
+  await mkdir(userDataPath, { recursive: true });
   const dbPath = path.join(userDataPath, 'multitorrent.sqlite');
   dbInstance = await open({
     filename: dbPath,
@@ -51,7 +53,7 @@ export async function getSelectedNetworks(): Promise<SelectedNetwork[]> {
   const db = getDb();
   const rows = await db.all('SELECT * FROM networks');
   return rows.map(row => ({
-    interfaceId: row.interfaceName,
+    interfaceId: String(row.interfaceName),
     enabled: Boolean(row.enabled),
     priority: (row.priority as "high" | "normal" | "low") || "normal",
     metered: Boolean(row.metered)
@@ -66,5 +68,20 @@ export async function saveSelectedNetwork(network: SelectedNetwork): Promise<voi
     network.enabled,
     network.priority,
     network.metered
+  );
+}
+
+export async function getSettings(): Promise<Record<string, string>> {
+  const rows: Array<{ key: string; value: string | null }> =
+    await getDb().all('SELECT key, value FROM settings');
+  return Object.fromEntries(rows.filter(row => typeof row.value === 'string')
+    .map(row => [row.key, row.value as string]));
+}
+
+export async function saveSetting(key: string, value: string): Promise<void> {
+  await getDb().run(
+    'INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value',
+    key,
+    value
   );
 }

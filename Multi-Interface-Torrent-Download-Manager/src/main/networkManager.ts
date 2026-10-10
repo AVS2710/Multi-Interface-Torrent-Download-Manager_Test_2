@@ -1,5 +1,5 @@
-import os from 'os';
-import net from 'net';
+import os from 'node:os';
+import net from 'node:net';
 
 export type InterfaceState = 'CONNECTED' | 'TESTING' | 'LIMITED' | 'NO_INTERNET' | 'DISCONNECTED' | 'BLOCKED' | 'ERROR';
 
@@ -18,8 +18,23 @@ export interface NetworkInterfaceInfo {
   state: InterfaceState;
 }
 
+interface ConnectivityProbe {
+  host: string;
+  port: number;
+}
+
+// Use services that are intended to accept TCP connections. 8.8.8.8 is a DNS
+// resolver, not a reliable HTTP endpoint on port 80; probing that port could
+// report a working interface as offline.
+const CONNECTIVITY_PROBES: readonly ConnectivityProbe[] = [
+  { host: '1.1.1.1', port: 443 },
+  { host: '8.8.8.8', port: 53 },
+];
+
 export class InterfaceHealthChecker {
   public async check(ipv4: string): Promise<InterfaceState> {
+    if (typeof ipv4 !== 'string' || !ipv4.trim()) return 'DISCONNECTED';
+
     try {
       const isOnline = await this.checkConnectivity(ipv4);
       return isOnline ? 'CONNECTED' : 'NO_INTERNET';
@@ -28,36 +43,39 @@ export class InterfaceHealthChecker {
     }
   }
 
-  private checkConnectivity(interfaceIp: string): Promise<boolean> {
-    return new Promise((resolve) => {
-      const socket = new net.Socket();
-      socket.setTimeout(2000);
+  private async checkConnectivity(interfaceIp: string): Promise<boolean> {
+    for (const probe of CONNECTIVITY_PROBES) {
+      const connected = await new Promise<boolean>((resolve) => {
+        const socket = new net.Socket();
+        let settled = false;
 
-      socket.on('connect', () => {
-        socket.destroy();
-        resolve(true);
+        const finish = (result: boolean) => {
+          if (settled) return;
+          settled = true;
+          socket.destroy();
+          resolve(result);
+        };
+
+        socket.setTimeout(1200);
+        socket.once('connect', () => finish(true));
+        socket.once('timeout', () => finish(false));
+        socket.once('error', () => finish(false));
+
+        try {
+          socket.connect({
+            host: probe.host,
+            port: probe.port,
+            localAddress: interfaceIp,
+          });
+        } catch {
+          finish(false);
+        }
       });
 
-      socket.on('timeout', () => {
-        socket.destroy();
-        resolve(false);
-      });
+      if (connected) return true;
+    }
 
-      socket.on('error', () => {
-        socket.destroy();
-        resolve(false);
-      });
-
-      try {
-        socket.connect({
-          port: 80,
-          host: '8.8.8.8',
-          localAddress: interfaceIp
-        });
-      } catch {
-        resolve(false);
-      }
-    });
+    return false;
   }
 }
 
@@ -87,10 +105,10 @@ export class NetworkManager {
           ipv4Addresses: ipv4s,
           ipv6Addresses: ipv6s,
           isUp: true,
-          hasInternet: false, // Updated by health checker later
+          hasInternet: false,
           isMetered: name.toLowerCase().includes('usb'),
           state: 'TESTING',
-          // A rudimentary way to estimate gateway uniqueness for UX hints
+          // A local subnet is only a rough hint; it does not prove gateway equality.
           gateway: ipv4s[0].split('.').slice(0, 3).join('.') + '.1'
         });
       }
@@ -99,12 +117,12 @@ export class NetworkManager {
   }
 
   public async getHealthyInterfaces(): Promise<NetworkInterfaceInfo[]> {
-    const all = this.getInterfaces();
-    for (const iface of all) {
+    const interfaces = this.getInterfaces();
+    await Promise.all(interfaces.map(async iface => {
       iface.state = await this.healthChecker.check(iface.ipv4Addresses[0]);
       iface.hasInternet = iface.state === 'CONNECTED';
-    }
-    return all;
+    }));
+    return interfaces;
   }
 }
 

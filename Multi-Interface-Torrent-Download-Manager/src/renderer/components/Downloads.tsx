@@ -1,72 +1,82 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
+import type { UITorrentState } from '../../shared/torrentApi.js';
 
-interface Torrent {
-  id: number;
-  name: string;
-  progress: number;
-  download_rate: number;
-  upload_rate: number;
-  state: number;
+function errorText(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 const Downloads: React.FC = () => {
-  const [torrents, setTorrents] = useState<Torrent[]>([]);
+  const [torrents, setTorrents] = useState<UITorrentState[]>([]);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const torrentApi = (window as unknown as {
-      torrentApi?: {
-        subscribeToTorrents: (cb: (torrents: Torrent[]) => void) => void,
-        unsubscribeFromTorrents: () => void,
-        pauseTorrent: (id: number) => void,
-        resumeTorrent: (id: number) => void,
-        removeTorrent: (id: number) => void
-      }
-    }).torrentApi;
-
-    if (torrentApi) {
-      torrentApi.subscribeToTorrents((data) => {
-        setTorrents(data);
-      });
-      return () => torrentApi.unsubscribeFromTorrents();
+    let disposed = false;
+    const api = window.torrentApi;
+    if (!api) {
+      setError('The secure Electron preload bridge is unavailable. Rebuild the app.');
+      return;
     }
+
+    void api.getTorrents().then(current => {
+      if (!disposed) setTorrents(current);
+    }).catch(reason => {
+      if (!disposed) setError(`Could not load downloads: ${errorText(reason)}`);
+    });
+    api.subscribeToTorrents(current => {
+      if (!disposed) setTorrents(current);
+    });
+
+    return () => {
+      disposed = true;
+      api.unsubscribeFromTorrents();
+    };
   }, []);
+
+  const runAction = async (action: () => Promise<void>) => {
+    setError(null);
+    try {
+      await action();
+    } catch (reason) {
+      setError(errorText(reason));
+    }
+  };
 
   return (
     <div className="p-4">
       <h2 className="text-2xl font-bold mb-4">Downloads</h2>
+      {error && <p role="alert" className="mb-4 rounded border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-600 dark:text-red-300">{error}</p>}
       {torrents.length === 0 ? (
-        <p>No active downloads.</p>
+        <p className="text-gray-600 dark:text-gray-400">No active downloads. Choose <strong>+ Add Torrent</strong> to add a magnet link or torrent file.</p>
       ) : (
         <ul className="space-y-4">
-          {torrents.map((t) => (
-            <li key={t.id} className="border p-4 rounded-md bg-gray-50 dark:bg-gray-800 flex justify-between items-center">
-              <div>
-                <h3 className="font-semibold text-lg">{t.name}</h3>
-                <p className="text-sm text-gray-600 dark:text-gray-400">Progress: {(t.progress * 100).toFixed(2)}%</p>
-                <div className="text-sm text-gray-500 flex space-x-4">
-                  <span>↓ {(t.download_rate / 1024).toFixed(2)} KB/s</span>
-                  <span>↑ {(t.upload_rate / 1024).toFixed(2)} KB/s</span>
+          {torrents.map(torrent => (
+            <li key={torrent.id} className="border p-4 rounded-md bg-gray-50 dark:bg-gray-800 flex justify-between items-center gap-4">
+              <div className="min-w-0">
+                <h3 className="font-semibold text-lg truncate">{torrent.name || 'Fetching torrent metadata…'}</h3>
+                <p className="text-sm text-gray-600 dark:text-gray-400">
+                  Progress: {typeof torrent.progress === 'number' ? `${(Math.max(0, Math.min(1, torrent.progress)) * 100).toFixed(2)}%` : 'Not reported by engine'}
+                </p>
+                <div className="text-sm text-gray-500 flex flex-wrap gap-x-4">
+                  <span>↓ {typeof torrent.download_rate === 'number' ? `${(torrent.download_rate / 1024).toFixed(2)} KB/s` : '—'}</span>
+                  <span>↑ {typeof torrent.upload_rate === 'number' ? `${(torrent.upload_rate / 1024).toFixed(2)} KB/s` : 'Not reported by engine'}</span>
                 </div>
               </div>
-              <div className="flex space-x-2">
+              <div className="flex flex-wrap gap-2 shrink-0">
                 <button
-                  onClick={() => (window as any).torrentApi.pauseTorrent(t.id)}
+                  type="button"
+                  onClick={() => void runAction(() => window.torrentApi!.pauseTorrent(torrent.id))}
                   className="px-3 py-1 bg-yellow-500 text-white rounded hover:bg-yellow-600 text-sm"
-                >
-                  Pause
-                </button>
+                >Pause</button>
                 <button
-                  onClick={() => (window as any).torrentApi.resumeTorrent(t.id)}
+                  type="button"
+                  onClick={() => void runAction(() => window.torrentApi!.resumeTorrent(torrent.id))}
                   className="px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 text-sm"
-                >
-                  Resume
-                </button>
+                >Resume</button>
                 <button
-                  onClick={() => (window as any).torrentApi.removeTorrent(t.id)}
+                  type="button"
+                  onClick={() => void runAction(() => window.torrentApi!.removeTorrent(torrent.id))}
                   className="px-3 py-1 bg-red-500 text-white rounded hover:bg-red-600 text-sm"
-                >
-                  Remove
-                </button>
+                >Remove</button>
               </div>
             </li>
           ))}

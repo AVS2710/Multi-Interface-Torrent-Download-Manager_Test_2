@@ -1,20 +1,44 @@
 {
-  "appId": "com.example.multitorrent",
+  "appId": "com.avs2710.multitorrent",
   "productName": "MultiTorrent",
+  "artifactName": "MultiTorrent-${version}-${arch}.${ext}",
   "directories": {
-    "output": "release"
+    "output": "release",
+    "buildResources": "build"
   },
   "files": [
     "dist/**/*",
     "package.json"
   ],
-  "mac": {
-    "category": "public.app-category.utilities"
-  },
-  "win": {
-    "target": "nsis"
-  },
+  "asar": true,
+  "asarUnpack": [
+    "**/*.node",
+    "**/*.so",
+    "**/*.so.*"
+  ],
+  "protocols": [
+    {
+      "name": "BitTorrent magnet link",
+      "schemes": ["magnet"]
+    }
+  ],
+  "fileAssociations": [
+    {
+      "ext": "torrent",
+      "name": "BitTorrent torrent file",
+      "mimeType": "application/x-bittorrent",
+      "role": "Editor"
+    }
+  ],
   "linux": {
-    "target": "AppImage"
+    "target": ["AppImage"],
+    "category": "Network",
+    "icon": "build/icons",
+    "mimeTypes": [
+      "application/x-bittorrent",
+      "x-scheme-handler/magnet"
+    ],
+    "synopsis": "BitTorrent downloads with network-interface selection",
+    "description": "A desktop BitTorrent client for managing downloads and network interfaces."
   }
 }

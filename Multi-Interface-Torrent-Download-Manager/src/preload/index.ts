@@ -1,29 +1,42 @@
-import { contextBridge, ipcRenderer } from 'electron';
+import { contextBridge, ipcRenderer, webUtils } from 'electron';
+import type { AppNetwork, TorrentApi, TorrentMetadata, UITorrentState } from '../shared/torrentApi.js';
 
-contextBridge.exposeInMainWorld('torrentApi', {
-  addTorrent: (magnetOrPath: string, savePath: string) => ipcRenderer.invoke('add-torrent', magnetOrPath, savePath),
+const api: TorrentApi = {
+  addTorrent: (input: string, savePath: string) => ipcRenderer.invoke('add-torrent', input, savePath),
   pauseTorrent: (id: number) => ipcRenderer.invoke('pause-torrent', id),
   resumeTorrent: (id: number) => ipcRenderer.invoke('resume-torrent', id),
   removeTorrent: (id: number) => ipcRenderer.invoke('remove-torrent', id),
-  getNetworks: () => ipcRenderer.invoke('get-networks'),
-  updateNetworkPreferences: (networkId: string, updates: Record<string, unknown>) => ipcRenderer.invoke('update-network', networkId, updates),
-  getTorrents: () => ipcRenderer.invoke('get-torrents'),
-  getTorrentDetails: (id: number) => ipcRenderer.invoke('get-torrent-details', id),
-  openFileDialog: () => ipcRenderer.invoke('open-file-dialog'),
-  openTorrentFileDialog: () => ipcRenderer.invoke('open-torrent-file-dialog'),
-  parseTorrentFile: (path: string) => ipcRenderer.invoke('parse-torrent-file', path),
-  getSettings: () => ipcRenderer.invoke('get-settings'),
+  getNetworks: () => ipcRenderer.invoke('get-networks') as Promise<AppNetwork[]>,
+  updateNetworkPreferences: (id: string, updates: Record<string, unknown>) =>
+    ipcRenderer.invoke('update-network', id, updates),
+  getTorrents: () => ipcRenderer.invoke('get-torrents') as Promise<UITorrentState[]>,
+  getTorrentDetails: (id: number) => ipcRenderer.invoke('get-torrent-details', id) as Promise<UITorrentState>,
+  openFileDialog: () => ipcRenderer.invoke('open-file-dialog') as Promise<string | undefined>,
+  openTorrentFileDialog: () => ipcRenderer.invoke('open-torrent-file-dialog') as Promise<string | undefined>,
+  parseTorrentFile: (filePath: string) =>
+    ipcRenderer.invoke('parse-torrent-file', filePath) as Promise<TorrentMetadata>,
+  getSettings: () => ipcRenderer.invoke('get-settings') as Promise<Record<string, string>>,
   updateSettings: (key: string, value: string) => ipcRenderer.invoke('update-settings', key, value),
-  subscribeToTorrents: (callback: (data: unknown) => void) => {
-    ipcRenderer.on('torrents-updated', (_event, data) => callback(data));
+  getPathForFile: (file: File) => webUtils.getPathForFile(file),
+  getLaunchInput: () => ipcRenderer.invoke('get-launch-input') as Promise<string | undefined>,
+  subscribeToTorrents: (callback) => {
+    ipcRenderer.on('torrents-updated', (_event, data: UITorrentState[]) => callback(data));
   },
   unsubscribeFromTorrents: () => {
     ipcRenderer.removeAllListeners('torrents-updated');
   },
-  subscribeToToasts: (callback: (toast: unknown) => void) => {
-    ipcRenderer.on('toast-event', (_event, data) => callback(data));
+  subscribeToToasts: (callback) => {
+    ipcRenderer.on('toast-event', (_event, data: { message: string }) => callback(data));
   },
   unsubscribeFromToasts: () => {
     ipcRenderer.removeAllListeners('toast-event');
-  }
-});
+  },
+  subscribeToOpenTorrentInput: (callback) => {
+    ipcRenderer.on('open-torrent-input', (_event, input: string) => callback(input));
+  },
+  unsubscribeFromOpenTorrentInput: () => {
+    ipcRenderer.removeAllListeners('open-torrent-input');
+  },
+};
+
+contextBridge.exposeInMainWorld('torrentApi', api);
