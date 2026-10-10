@@ -29,35 +29,39 @@ export class InterfaceHealthChecker {
   }
 
   private checkConnectivity(interfaceIp: string): Promise<boolean> {
-    return new Promise((resolve) => {
+    // 8.8.8.8 is a DNS server, not an HTTP server on port 80. Probe TCP/443
+    // on two public endpoints instead, and bind every socket to this adapter's
+    // local address so healthy interfaces are checked independently.
+    const targets = [
+      { host: '1.1.1.1', port: 443 },
+      { host: '8.8.8.8', port: 443 },
+    ];
+
+    return Promise.all(targets.map(target => new Promise<boolean>(resolve => {
       const socket = new net.Socket();
+      let settled = false;
+      const finish = (connected: boolean): void => {
+        if (settled) return;
+        settled = true;
+        socket.destroy();
+        resolve(connected);
+      };
+
       socket.setTimeout(2000);
-
-      socket.on('connect', () => {
-        socket.destroy();
-        resolve(true);
-      });
-
-      socket.on('timeout', () => {
-        socket.destroy();
-        resolve(false);
-      });
-
-      socket.on('error', () => {
-        socket.destroy();
-        resolve(false);
-      });
+      socket.once('connect', () => finish(true));
+      socket.once('timeout', () => finish(false));
+      socket.once('error', () => finish(false));
 
       try {
         socket.connect({
-          port: 80,
-          host: '8.8.8.8',
-          localAddress: interfaceIp
+          host: target.host,
+          port: target.port,
+          localAddress: interfaceIp,
         });
       } catch {
-        resolve(false);
+        finish(false);
       }
-    });
+    }))).then(results => results.some(Boolean));
   }
 }
 
@@ -81,8 +85,16 @@ export class NetworkManager {
           id: name,
           name,
           displayName: name,
-          type: name.includes('wl') || name.includes('wi-fi') ? 'Wi-Fi' :
-                name.includes('en') || name.includes('eth') ? 'Ethernet' : 'Other',
+          type: (() => {
+            const normalizedName = name.toLowerCase();
+            if (normalizedName.includes('wi-fi') || normalizedName.includes('wifi') || normalizedName.includes('wlan') || normalizedName.startsWith('wl')) {
+              return 'Wi-Fi';
+            }
+            if (normalizedName.includes('ethernet') || normalizedName.includes('eth') || normalizedName.startsWith('en')) {
+              return 'Ethernet';
+            }
+            return 'Other';
+          })(),
           addresses,
           ipv4Addresses: ipv4s,
           ipv6Addresses: ipv6s,
