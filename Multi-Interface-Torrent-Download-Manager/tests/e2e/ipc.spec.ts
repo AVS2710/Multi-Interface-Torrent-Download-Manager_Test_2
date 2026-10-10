@@ -19,6 +19,9 @@ const launchApp = (userDataDir?: string) => electron.launch({
 
 async function closeApp(app: Awaited<ReturnType<typeof launchApp>>): Promise<void> {
   const child = app.process();
+  const shutdownOutput: string[] = [];
+  child.stdout?.on('data', (chunk: Buffer) => shutdownOutput.push(chunk.toString()));
+  child.stderr?.on('data', (chunk: Buffer) => shutdownOutput.push(chunk.toString()));
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     // ElectronApplication.close() closes Playwright's browser context; on this
@@ -31,14 +34,17 @@ async function closeApp(app: Awaited<ReturnType<typeof launchApp>>): Promise<voi
       });
 
     await app.evaluate(({ app }) => {
-      setTimeout(() => app.quit(), 100);
+      setTimeout(() => {
+        process.stderr.write('[multitorrent-e2e] invoking app.quit\\n');
+        app.quit();
+      }, 100);
     });
 
     const exit = await Promise.race([
       processExit,
       new Promise<never>((_resolve, reject) => {
         timer = setTimeout(() => reject(new Error(
-          `Electron main process did not exit within 5 seconds (exitCode=${child.exitCode}, signal=${child.signalCode}).`,
+          `Electron main process did not exit within 5 seconds (exitCode=${child.exitCode}, signal=${child.signalCode}).\\nShutdown output:\\n${shutdownOutput.join('') || '(no shutdown output captured)'}`,
         )), 5_000);
       }),
     ]);

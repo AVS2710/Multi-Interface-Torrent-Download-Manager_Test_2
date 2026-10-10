@@ -227,15 +227,13 @@ app.on('window-all-closed', () => {
 
 let shutdownStarted = false;
 app.on('before-quit', event => {
+  process.stderr.write('[multitorrent-shutdown] before-quit entered\\n');
   if (shutdownStarted) return;
   shutdownStarted = true;
   event.preventDefault();
 
-  // libtorrent's native session can block Electron's app.exit() path while its
-  // native worker threads are being torn down. Stop JS polling and pending work,
-  // then terminate the process directly. Settings/torrent DB writes are
-  // individually committed before their IPC handlers return.
   torrentService.dispose();
+  process.stderr.write('[multitorrent-shutdown] calling process.exit\\n');
   process.exit(0);
 });
 
