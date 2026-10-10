@@ -1,0 +1,13 @@
+# Dependencies and generated desktop build outputs
+node_modules/
+dist/
+dist-electron/
+release/
+playwright-report/
+test-results/
+.last-run.json
+build/icons/
+
+# Local test fixtures and diagnostics
+test-libtorrent/
+*.log

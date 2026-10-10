@@ -111,6 +111,8 @@ function createWindow(): void {
 }
 
 app.whenReady().then(async () => {
+  if (!hasSingleInstanceLock) return;
+
   try {
     app.setName('MultiTorrent');
     if (app.isPackaged) app.setAsDefaultProtocolClient('magnet');

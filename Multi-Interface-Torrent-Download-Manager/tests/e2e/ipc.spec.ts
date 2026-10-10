@@ -88,7 +88,7 @@ test.describe('Electron runtime, preload bridge and torrent workflow', () => {
 
       await addDialog.getByRole('button', { name: 'Choose File' }).click();
       await expect(addDialog.getByLabel('Torrent File or Magnet Link')).toHaveValue(torrentPath);
-      await expect(addDialog.getByText('test-file.txt', { exact: true })).toBeVisible();
+      await expect(addDialog.locator('p').filter({ hasText: 'test-file.txt' }).first()).toBeVisible();
 
       await addDialog.getByRole('button', { name: 'Add Torrent' }).click();
       await expect(addDialog).toBeHidden({ timeout: 15000 });

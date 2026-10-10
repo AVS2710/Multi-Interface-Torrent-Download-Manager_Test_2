@@ -12,6 +12,10 @@ on:
       - ".github/workflows/linux-appimage.yml"
   workflow_dispatch:
 
+concurrency:
+  group: linux-appimage-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: ubuntu-22.04
@@ -50,6 +54,18 @@ jobs:
         run: npm run test:integration
       - name: Rebuild native dependencies for Electron
         run: npx electron-builder install-app-deps
+      - name: Inspect native torrent module dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          addon="$(find node_modules/@porla/libtorrent -type f -name '*.node' -print -quit)"
+          if [ -z "$addon" ]; then
+            echo "No native .node binary found under @porla/libtorrent"
+            find node_modules/@porla/libtorrent -maxdepth 4 -type f -print
+            exit 1
+          fi
+          echo "Native addon: $addon"
+          ldd "$addon"
       - name: Build production application
         run: npm run build
       - name: Real Electron end-to-end tests
