@@ -18,22 +18,35 @@ const launchApp = (userDataDir?: string) => electron.launch({
 });
 
 async function closeApp(app: Awaited<ReturnType<typeof launchApp>>): Promise<void> {
+  const child = app.process();
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
-    // ElectronApplication.close() closes Playwright's browser context; it does
-    // not reliably request app.quit() for this native-session app. Request a
-    // graceful Electron quit explicitly, after the evaluate IPC reply is sent.
+    // ElectronApplication.close() closes Playwright's browser context; on this
+    // native-session app that promise can hang even after shutdown was requested.
+    // Explicitly ask Electron to quit, then verify the actual child-process exit.
+    const processExit = child.exitCode !== null
+      ? Promise.resolve({ code: child.exitCode, signal: child.signalCode })
+      : new Promise<{ code: number | null; signal: NodeJS.Signals | null }>(resolve => {
+        child.once('exit', (code, signal) => resolve({ code, signal }));
+      });
+
     await app.evaluate(({ app }) => {
-      setImmediate(() => app.quit());
+      setTimeout(() => app.quit(), 100);
     });
-    await Promise.race([
-      app.close(),
+
+    const exit = await Promise.race([
+      processExit,
       new Promise<never>((_resolve, reject) => {
-        timer = setTimeout(() => reject(new Error('Electron did not close cleanly within 5 seconds.')), 5_000);
+        timer = setTimeout(() => reject(new Error(
+          `Electron main process did not exit within 5 seconds (exitCode=${child.exitCode}, signal=${child.signalCode}).`,
+        )), 5_000);
       }),
     ]);
+
+    if (exit.code !== 0) {
+      throw new Error(`Electron exited abnormally (exitCode=${exit.code}, signal=${exit.signal ?? 'none'}).`);
+    }
   } catch (error) {
-    const child = app.process();
     if (child.exitCode === null) child.kill('SIGKILL');
     throw error;
   } finally {
