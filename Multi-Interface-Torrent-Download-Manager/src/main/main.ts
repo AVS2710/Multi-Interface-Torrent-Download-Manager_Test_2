@@ -169,10 +169,32 @@ async function resolveTorrentSource(source: string): Promise<string> {
   return value;
 }
 
+function showStartupError(error: unknown): void {
+  const message = errorMessage(error);
+  console.error('MultiTorrent failed to start:', error);
+
+  // Avoid a blocking native dialog: it can leave headless launchers and E2E
+  // tests waiting forever when initialization fails before the main window.
+  const errorWindow = new BrowserWindow({
+    width: 720,
+    height: 360,
+    title: 'MultiTorrent startup error',
+    webPreferences: {
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+    },
+  });
+  mainWindow = errorWindow;
+  const html = `<!doctype html><html><head><meta charset="utf-8"><title>MultiTorrent startup error</title>
+    <style>body{font:16px system-ui,sans-serif;background:#111827;color:#f9fafb;padding:28px}
+    h1{font-size:24px}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#1f2937;padding:16px;border-radius:8px}</style>
+    </head><body><h1>MultiTorrent could not start</h1><p>Initialization failed. Check the error below and restart the application after fixing it.</p><pre>${message.replace(/[&<>"]/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[char] ?? char))}</pre></body></html>`;
+  void errorWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+}
+
 app.whenReady().then(async () => {
   await initDb(app.getPath('userData'));
-  await applySavedSettings();
-  await multiInterfaceManager.reconcileNetworkConfiguration();
   createWindow();
 
   app.on('activate', () => {
@@ -184,11 +206,19 @@ app.whenReady().then(async () => {
       mainWindow.webContents.send('torrents-updated', torrents);
     }
   });
-}).catch(error => {
-  console.error('MultiTorrent failed to start:', error);
-  dialog.showErrorBox('MultiTorrent failed to start', errorMessage(error));
-  app.quit();
-});
+
+  // Keep the UI available if an optional engine setting is unsupported by the
+  // installed native binding; surface the failure instead of blocking startup.
+  try {
+    await applySavedSettings();
+  } catch (error) {
+    console.error('Could not apply saved torrent settings:', error);
+    mainWindow?.webContents.once('did-finish-load', () => {
+      notify(`Some saved settings could not be applied: ${errorMessage(error)}`);
+    });
+  }
+  void multiInterfaceManager.reconcileNetworkConfiguration();
+}).catch(showStartupError);
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
