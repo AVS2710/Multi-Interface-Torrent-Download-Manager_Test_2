@@ -136,7 +136,7 @@ test.describe('Electron IPC and Preload Bridge', () => {
 
       await page.getByLabel('Torrent File, Magnet Link, or Torrent URL').fill(torrentPath);
       await page.getByRole('textbox', { name: 'Save Location' }).fill(downloadsDir);
-      await expect(page.getByText('Name: multitorrent-e2e-file.txt', { exact: true })).toBeVisible();
+      await expect(page.getByRole('heading', { name: 'Metadata Preview' }).locator('..')).toContainText('multitorrent-e2e-file.txt');
 
       await page.getByRole('button', { name: 'Add Torrent', exact: true }).click();
       await expect(page.getByRole('heading', { name: 'Add Torrent' })).toHaveCount(0);
