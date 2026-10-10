@@ -186,10 +186,11 @@ function showStartupError(error: unknown): void {
     },
   });
   mainWindow = errorWindow;
+  const escapedMessage = message.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;');
   const html = `<!doctype html><html><head><meta charset="utf-8"><title>MultiTorrent startup error</title>
     <style>body{font:16px system-ui,sans-serif;background:#111827;color:#f9fafb;padding:28px}
     h1{font-size:24px}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#1f2937;padding:16px;border-radius:8px}</style>
-    </head><body><h1>MultiTorrent could not start</h1><p>Initialization failed. Check the error below and restart the application after fixing it.</p><pre>${message.replace(/[&<>"]/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[char] ?? char))}</pre></body></html>`;
+    </head><body><h1>MultiTorrent could not start</h1><p>Initialization failed. Check the error below and restart the application after fixing it.</p><pre>${escapedMessage}</pre></body></html>`;
   void errorWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
 }
 
