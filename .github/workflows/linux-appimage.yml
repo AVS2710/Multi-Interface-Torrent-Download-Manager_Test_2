@@ -2,7 +2,7 @@ name: Linux AppImage
 
 on:
   push:
-    branches: ["main", "fix/**"]
+    branches: ["main"]
     paths:
       - "Multi-Interface-Torrent-Download-Manager/**"
       - ".github/workflows/linux-appimage.yml"
