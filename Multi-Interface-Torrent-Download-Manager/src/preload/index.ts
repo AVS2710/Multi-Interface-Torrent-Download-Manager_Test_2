@@ -18,6 +18,7 @@ const api: TorrentApi = {
   getSettings: () => ipcRenderer.invoke('get-settings') as Promise<Record<string, string>>,
   updateSettings: (key: string, value: string) => ipcRenderer.invoke('update-settings', key, value),
   getPathForFile: (file: File) => webUtils.getPathForFile(file),
+  getLaunchInput: () => ipcRenderer.invoke('get-launch-input') as Promise<string | undefined>,
   subscribeToTorrents: (callback) => {
     ipcRenderer.on('torrents-updated', (_event, data: UITorrentState[]) => callback(data));
   },

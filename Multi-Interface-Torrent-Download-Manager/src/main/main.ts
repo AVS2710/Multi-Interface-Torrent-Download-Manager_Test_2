@@ -8,7 +8,12 @@ import { initDb, getSelectedNetworks, saveSelectedNetwork, getSettings, saveSett
 import type { SelectedNetwork } from './db.js';
 
 let mainWindow: BrowserWindow | null = null;
+let pendingExternalInput: string | null = null;
 const torrentService = multiInterfaceManager.torrentService;
+
+if (process.env.MULTITORRENT_E2E_USER_DATA) {
+  app.setPath('userData', process.env.MULTITORRENT_E2E_USER_DATA);
+}
 
 function userFacingError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -18,6 +23,42 @@ function showToast(message: string): void {
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send('toast-event', { message });
   }
+}
+
+function findExternalInput(args: string[]): string | undefined {
+  return args.find(argument =>
+    typeof argument === 'string' &&
+    (/^magnet:\?/i.test(argument) ||
+      /^https?:\/\/.+\.torrent(?:[?#].*)?$/i.test(argument) ||
+      /\.torrent$/i.test(argument))
+  );
+}
+
+function openExternalInput(input: string): void {
+  if (!mainWindow || mainWindow.isDestroyed() || mainWindow.webContents.isLoading()) {
+    pendingExternalInput = input;
+    if (!mainWindow || mainWindow.isDestroyed()) createWindow();
+    return;
+  }
+
+  mainWindow.show();
+  mainWindow.focus();
+  mainWindow.webContents.send('open-torrent-input', input);
+}
+
+const hasSingleInstanceLock = app.requestSingleInstanceLock();
+if (!hasSingleInstanceLock) {
+  app.quit();
+} else {
+  pendingExternalInput = findExternalInput(process.argv) ?? null;
+  app.on('second-instance', (_event, commandLine) => {
+    const input = findExternalInput(commandLine);
+    if (input) openExternalInput(input);
+    else if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.show();
+      mainWindow.focus();
+    }
+  });
 }
 
 async function settingsWithDefaults(): Promise<Record<string, string>> {
@@ -72,6 +113,7 @@ function createWindow(): void {
 app.whenReady().then(async () => {
   try {
     app.setName('MultiTorrent');
+    if (app.isPackaged) app.setAsDefaultProtocolClient('magnet');
     await mkdir(app.getPath('userData'), { recursive: true });
     await initDb(app.getPath('userData'));
 
@@ -103,6 +145,12 @@ app.on('before-quit', () => torrentService.dispose());
 
 // Keep each IPC channel implemented here in sync with src/shared/torrentApi.d.ts
 // and src/preload/index.ts. Errors are intentionally propagated to the renderer.
+ipcMain.handle('get-launch-input', () => {
+  const input = pendingExternalInput ?? undefined;
+  pendingExternalInput = null;
+  return input;
+});
+
 ipcMain.handle('get-networks', async () => {
   const interfaces = await networkManager.getHealthyInterfaces();
   const selected = await getSelectedNetworks();

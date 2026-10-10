@@ -19,14 +19,19 @@ const App: React.FC = () => {
     let disposed = false;
     const api = window.torrentApi;
     if (api) {
-      void api.getSettings().then(settings => {
-        if (!disposed) applyTheme(settings.theme || 'system');
-      }).catch((error: unknown) => console.error('Could not load appearance settings:', error));
-
       api.subscribeToOpenTorrentInput(input => {
         setInitialInput(input);
         setShowAdd(true);
       });
+      void api.getLaunchInput().then(input => {
+        if (!disposed && input) {
+          setInitialInput(input);
+          setShowAdd(true);
+        }
+      }).catch((error: unknown) => console.error('Could not read launch input:', error));
+      void api.getSettings().then(settings => {
+        if (!disposed) applyTheme(settings.theme || 'system');
+      }).catch((error: unknown) => console.error('Could not load appearance settings:', error));
     }
 
     const handleThemeChange = (event: Event) => {

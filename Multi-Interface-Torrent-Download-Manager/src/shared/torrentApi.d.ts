@@ -47,6 +47,7 @@ export interface TorrentApi {
   getSettings: () => Promise<Record<string, string>>;
   updateSettings: (key: string, value: string) => Promise<void>;
   getPathForFile: (file: File) => string;
+  getLaunchInput: () => Promise<string | undefined>;
   subscribeToTorrents: (callback: (data: UITorrentState[]) => void) => void;
   unsubscribeFromTorrents: () => void;
   subscribeToToasts: (callback: (toast: { message: string }) => void) => void;
