@@ -17,6 +17,24 @@ const launchApp = (userDataDir?: string) => electron.launch({
   timeout: 30_000,
 });
 
+async function closeApp(app: Awaited<ReturnType<typeof launchApp>>): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([
+      app.close(),
+      new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(() => reject(new Error('Electron did not close cleanly within 5 seconds.')), 5_000);
+      }),
+    ]);
+  } catch (error) {
+    console.error('Forcing Electron test process to exit:', error);
+    const child = app.process();
+    if (child.exitCode === null) child.kill('SIGKILL');
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 async function waitForFirstWindow(app: Awaited<ReturnType<typeof launchApp>>) {
   const child = app.process();
   const output: string[] = [];
@@ -85,7 +103,7 @@ test.describe('Electron IPC and Preload Bridge', () => {
       });
       expect(typeof settings.downloadDir).toBe('string');
     } finally {
-      await app.close();
+      await closeApp(app);
     }
   });
 
