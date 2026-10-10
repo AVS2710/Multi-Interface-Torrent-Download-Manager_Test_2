@@ -60,7 +60,17 @@ try {
 
     $cmakeJs = Join-Path $nativeRoot 'node_modules\.bin\cmake-js.cmd'
     if (-not (Test-Path $cmakeJs)) { throw ("cmake-js was not installed at " + $cmakeJs) }
-    $electronVersion = (& node -p "require('electron/package.json').version").Trim()
+    # Resolve Electron from the application project: this script is currently
+    # running inside the separate upstream binding checkout, which has no Electron
+    # dependency of its own.
+    $env:MULTITORRENT_ELECTRON_PACKAGE = Join-Path $projectRoot 'node_modules\electron\package.json'
+    if (-not (Test-Path $env:MULTITORRENT_ELECTRON_PACKAGE)) {
+        throw ("Electron package.json was not found at " + $env:MULTITORRENT_ELECTRON_PACKAGE)
+    }
+    $electronVersion = (& node -p "require(process.env.MULTITORRENT_ELECTRON_PACKAGE).version").Trim()
+    if ($LASTEXITCODE -ne 0 -or -not $electronVersion) {
+        throw 'Could not determine the application Electron version for the native binding build.'
+    }
     Write-Host ("Building N-API binding for Electron " + $electronVersion + " (Windows x64).")
 
     $cmakeArgs = @(
