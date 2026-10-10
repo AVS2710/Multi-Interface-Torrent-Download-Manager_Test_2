@@ -33,6 +33,18 @@ jobs:
           sudo apt-get install -y build-essential pkg-config libtorrent-rasterbar-dev libsqlite3-dev xvfb libnspr4 libnss3 libatk-bridge2.0-0 libgtk-3-0 libxkbcommon0 libasound2 libatspi2.0-0 libcups2 libdrm2 libgbm1 libxshmfence1 libxrandr2 libxcomposite1 libxdamage1 libxfixes3 libxrender1 libxext6 libx11-xcb1 libxss1 libpango-1.0-0 libcairo2 libatk1.0-0 libgdk-pixbuf2.0-0
       - name: Install dependencies
         run: npm ci
+      - name: Ensure Electron binary is installed
+        run: |
+          unset ELECTRON_SKIP_BINARY_DOWNLOAD ELECTRON_SKIP_DOWNLOAD
+          node node_modules/electron/install.js
+          node - <<'NODE'
+          const fs = require('node:fs');
+          const electronPath = require('electron');
+          if (typeof electronPath !== 'string' || !fs.existsSync(electronPath)) {
+            throw new Error(`Electron binary is missing or unreadable: ${String(electronPath)}`);
+          }
+          console.log(`Electron binary ready: ${electronPath}`);
+          NODE
       - name: Rebuild SQLite native module for the runner's glibc
         run: npm rebuild sqlite3 --build-from-source
       - name: Verify SQLite native module
