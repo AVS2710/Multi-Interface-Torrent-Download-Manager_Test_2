@@ -66,7 +66,7 @@ const App: React.FC = () => {
         {tab === 'networks' && <Networks />}
         {tab === 'settings' && <Settings />}
       </div>
-      {showAdd && <AddTorrentModal initialInput={initialInput} onClose={closeAdd} onAdded={() => setShowAdd(false)} />}
+      {showAdd && <AddTorrentModal initialInput={initialInput} onClose={closeAdd} onAdded={closeAdd} />}
       <Toast />
     </div>
   );

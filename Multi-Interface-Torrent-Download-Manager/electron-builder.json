@@ -16,6 +16,20 @@
     "**/*.so",
     "**/*.so.*"
   ],
+  "protocols": [
+    {
+      "name": "BitTorrent magnet link",
+      "schemes": ["magnet"]
+    }
+  ],
+  "fileAssociations": [
+    {
+      "ext": "torrent",
+      "name": "BitTorrent torrent file",
+      "mimeType": "application/x-bittorrent",
+      "role": "Editor"
+    }
+  ],
   "linux": {
     "target": ["AppImage"],
     "category": "Network",

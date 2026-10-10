@@ -21,9 +21,9 @@
   "main": "dist/main/main/main.js",
   "scripts": {
     "prebuild": "node scripts/generate-icon.mjs",
-    "build": "vite build && tsc -p tsconfig.node.json && vite build --config vite.preload.config.ts",
+    "build": "rimraf dist && vite build && tsc -p tsconfig.node.json && vite build --config vite.preload.config.ts",
     "start": "electron .",
-    "dist:linux": "npm run build && electron-builder --linux AppImage",
+    "dist:linux": "npm run build && electron-builder install-app-deps && electron-builder --linux AppImage",
     "package:linux": "npm run dist:linux",
     "lint": "eslint .",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.node.json --noEmit && tsc -p tsconfig.preload.json --noEmit",

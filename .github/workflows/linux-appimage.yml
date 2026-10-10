@@ -27,7 +27,7 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: Multi-Interface-Torrent-Download-Manager/package-lock.json
-      - name: Install native build and Electron display dependencies
+      - name: Install native build and Electron runtime dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y build-essential pkg-config libtorrent-rasterbar-dev libsqlite3-dev xvfb libnspr4 libnss3 libatk-bridge2.0-0 libgtk-3-0 libxkbcommon0 libasound2 libatspi2.0-0 libcups2 libdrm2 libgbm1 libxshmfence1 libxrandr2 libxcomposite1 libxdamage1 libxfixes3 libxrender1 libxext6 libx11-xcb1 libxss1 libpango-1.0-0 libcairo2 libatk1.0-0 libgdk-pixbuf2.0-0
@@ -55,7 +55,7 @@ jobs:
       - name: Real Electron end-to-end tests
         run: xvfb-run -a npm run test:e2e
       - name: Package Linux AppImage
-        run: npm run package:linux
+        run: npx electron-builder --linux AppImage
       - name: Smoke-test packaged AppImage
         shell: bash
         run: |
@@ -64,7 +64,7 @@ jobs:
           test -n "$appimage"
           chmod +x "$appimage"
           set +e
-          APPIMAGE_EXTRACT_AND_RUN=1 timeout 20s xvfb-run -a "$appimage" --no-sandbox
+          APPIMAGE_EXTRACT_AND_RUN=1 timeout 20s xvfb-run -a "$appimage"
           status=$?
           set -e
           if [ "$status" -ne 124 ]; then
