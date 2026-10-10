@@ -138,7 +138,7 @@ export class TorrentService {
       this.publishState();
       return id;
     } catch (error) {
-      throw new Error(`Could not add torrent: ${errorMessage(error)}`);
+      throw new Error(`Could not add torrent: ${errorMessage(error)}`, { cause: error });
     } finally {
       if (temporaryDirectory) {
         await rm(temporaryDirectory, { recursive: true, force: true });
