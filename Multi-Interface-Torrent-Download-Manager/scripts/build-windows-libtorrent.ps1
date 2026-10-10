@@ -87,6 +87,8 @@ try {
         ('--CDCMAKE_TOOLCHAIN_FILE=' + $toolchain),
         '--CDBUILD_SHARED_LIBS=OFF',
         '--CDBoost_USE_STATIC_LIBS=ON',
+        '--CDCMAKE_FIND_PACKAGE_PREFER_CONFIG=ON',
+        '--CDCMAKE_POLICY_DEFAULT_CMP0167=NEW',
         '--CDOPENSSL_USE_STATIC_LIBS=TRUE',
         'build'
     )
