@@ -24,12 +24,19 @@ The application is configured to use Electron's sandboxed, CommonJS preload bund
 
 ## Windows installer
 
-The Windows x64 installer is built on a native Windows runner so native Node modules are rebuilt for the correct platform. In a Windows developer environment with the C++ build tools required by the libtorrent binding:
+The Windows x64 installer is built on a native Windows runner. The libtorrent N-API binding is compiled from source for Windows with the Visual Studio C++ toolchain, CMake, Git, and vcpkg. vcpkg and the Visual Studio C++ workload are required when building locally.
 
 ```powershell
 npm ci
+npm run build:native:win
+npm run typecheck
+npm run test:unit
+npm run test:integration
+npm run test:e2e
 npm run package:win
 ```
+
+The native-build script uses the pinned [N-API binding source](https://github.com/avengerweb/porla-test/tree/4446e923b9ed020953a65269875ea0611364a52a) and its pinned libtorrent submodule. It compiles a Windows x64 addon and installs it into the local dependency tree; it does not change Linux builds.
 
 The installer is written under `release/MultiTorrent-1.0.0-x64.exe` (the exact artifact suffix can vary). The installer is configured for a per-user installation and allows the install directory to be selected.
 

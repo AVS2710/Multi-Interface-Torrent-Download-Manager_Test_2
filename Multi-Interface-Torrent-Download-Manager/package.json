@@ -26,14 +26,15 @@
     "build": "npm run clean && npm run build:renderer && npm run build:main && npm run build:preload",
     "start": "electron .",
     "package:linux": "npm run build && electron-builder --linux AppImage",
-    "package:win": "npm run build && electron-builder --win nsis --x64",
+    "package:win": "npm run build:native:win && npm run build && electron-builder --win nsis --x64",
     "package": "npm run build && electron-builder",
     "test": "npm run typecheck && npm run lint && npm run test:unit && npm run test:integration",
     "lint": "eslint .",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.node.json --noEmit && tsc -p tsconfig.preload.json --noEmit",
     "test:unit": "vitest run tests/unit",
     "test:integration": "vitest run tests/integration",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "build:native:win": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-windows-libtorrent.ps1"
   },
   "repository": {
     "type": "git",
