@@ -43,7 +43,14 @@ export async function launchElectronApp(): Promise<RunningElectronApp> {
       });
     });
 
-    const page = await Promise.race([app.firstWindow(), exitBeforeWindow]);
+    const windowPromise = app.firstWindow({ timeout: 10000 }).catch((error: unknown) => {
+      const output = processOutput.join('').slice(-12000);
+      throw new Error(
+        `Electron did not create a window within 10 seconds.\n${output}`,
+        { cause: error },
+      );
+    });
+    const page = await Promise.race([windowPromise, exitBeforeWindow]);
     await page.waitForLoadState('domcontentloaded');
     await page.waitForFunction(() => Boolean(document.querySelector('#root')?.childElementCount), undefined, { timeout: 15000 });
 
