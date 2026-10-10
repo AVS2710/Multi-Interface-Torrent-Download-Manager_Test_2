@@ -46,7 +46,7 @@ jobs:
         run: npm ci
 
       - name: Verify native modules load
-        run: node --input-type=module -e "import lt from '@porla/libtorrent'; if (typeof lt.Session !== 'function') process.exit(1); require('sqlite3'); console.log('Native libtorrent and SQLite modules load on Windows.');"
+        run: node --input-type=module -e "import lt from '@porla/libtorrent'; import sqlite3 from 'sqlite3'; if (typeof lt.Session !== 'function' || typeof sqlite3.Database !== 'function') process.exit(1); console.log('Native libtorrent and SQLite modules load on Windows.');"
 
       - name: Type check
         run: npm run typecheck
