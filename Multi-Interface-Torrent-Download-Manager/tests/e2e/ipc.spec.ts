@@ -27,9 +27,9 @@ async function closeApp(app: Awaited<ReturnType<typeof launchApp>>): Promise<voi
       }),
     ]);
   } catch (error) {
-    console.error('Forcing Electron test process to exit:', error);
     const child = app.process();
     if (child.exitCode === null) child.kill('SIGKILL');
+    throw error;
   } finally {
     if (timer) clearTimeout(timer);
   }
@@ -142,8 +142,11 @@ test.describe('Electron IPC and Preload Bridge', () => {
       await expect(page.getByRole('heading', { name: 'Add Torrent' })).toHaveCount(0);
       await expect(page.getByText('multitorrent-e2e-file.txt', { exact: true })).toBeVisible({ timeout: 10_000 });
     } finally {
-      await closeApp(app);
-      await fs.rm(workDir, { recursive: true, force: true });
+      try {
+        await closeApp(app);
+      } finally {
+        await fs.rm(workDir, { recursive: true, force: true });
+      }
     }
   });
 });
