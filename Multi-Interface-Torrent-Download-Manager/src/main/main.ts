@@ -226,13 +226,28 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
 });
 
-app.on('before-quit', () => {
-  // Do not cancel Electron's native quit sequence for asynchronous cleanup:
-  // a pending SQLite close must never keep the desktop process alive forever.
+let shutdownStarted = false;
+app.on('before-quit', event => {
+  if (shutdownStarted) return;
+  shutdownStarted = true;
+
+  // The libtorrent native binding may keep an alert-polling handle alive even
+  // after all windows close. Stop the engine and SQLite first, then exit through
+  // Electron (never leave a headless runner or desktop process hanging forever).
+  event.preventDefault();
   torrentService.dispose();
-  void closeDb().catch(error => {
-    console.error('Failed to close the application database during shutdown:', error);
-  });
+
+  const shutdownTimeout = setTimeout(() => {
+    console.error('Timed out while closing SQLite; exiting Electron to avoid a stuck process.');
+    app.exit(0);
+  }, 2500);
+
+  void closeDb()
+    .catch(error => console.error('Failed to close the application database during shutdown:', error))
+    .finally(() => {
+      clearTimeout(shutdownTimeout);
+      app.exit(0);
+    });
 });
 
 ipcMain.handle('get-networks', async () => {

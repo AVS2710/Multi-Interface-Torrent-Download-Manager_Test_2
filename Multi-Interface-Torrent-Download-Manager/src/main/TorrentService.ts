@@ -225,9 +225,21 @@ export class TorrentService {
     }
     this.pendingAdds.length = 0;
 
-    const session = this.session as unknown as { dispose?: () => void };
+    const session = this.session as unknown as {
+      pause?: () => void;
+      removeAllListeners?: () => void;
+      dispose?: () => void;
+      close?: () => void;
+    };
     try {
-      session.dispose?.();
+      session.pause?.();
+    } catch (error) {
+      console.error('Failed to pause the native torrent session during shutdown:', error);
+    }
+    try {
+      session.removeAllListeners?.();
+      if (typeof session.dispose === 'function') session.dispose();
+      else session.close?.();
     } catch (error) {
       console.error('Failed to dispose the native torrent session:', error);
     }
