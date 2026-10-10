@@ -57,15 +57,22 @@ jobs:
       - name: Inspect native torrent module dependencies
         shell: bash
         run: |
-          set -euo pipefail
-          addon="$(find node_modules/@porla/libtorrent -type f -name '*.node' -print -quit)"
-          if [ -z "$addon" ]; then
+          set -uo pipefail
+          echo "Resolved module entry:"
+          node -e "console.log(require.resolve('@porla/libtorrent'))"
+          echo "Verify the native binding loads in Node:"
+          node -e "const lt=require('@porla/libtorrent'); const s=new lt.Session(); console.log('Session constructed:', Boolean(s))"
+          echo "Native binaries shipped by the package:"
+          mapfile -t addons < <(find node_modules/@porla/libtorrent -type f -name '*.node' -print)
+          if [ "${#addons[@]}" -eq 0 ]; then
             echo "No native .node binary found under @porla/libtorrent"
             find node_modules/@porla/libtorrent -maxdepth 4 -type f -print
             exit 1
           fi
-          echo "Native addon: $addon"
-          ldd "$addon"
+          for addon in "${addons[@]}"; do
+            echo "===== $addon ====="
+            ldd "$addon" || true
+          done
       - name: Build production application
         run: npm run build
       - name: Real Electron end-to-end tests

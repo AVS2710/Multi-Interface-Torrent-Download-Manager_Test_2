@@ -135,6 +135,13 @@ app.whenReady().then(async () => {
     });
   } catch (error) {
     console.error('MultiTorrent startup failed:', error);
+    // A modal error box is invisible in headless E2E, leaving the process
+    // alive without a BrowserWindow. Fail fast in tests; show a native error
+    // dialog for normal desktop launches.
+    if (process.env.MULTITORRENT_E2E_USER_DATA) {
+      app.exit(1);
+      return;
+    }
     dialog.showErrorBox('MultiTorrent failed to start', userFacingError(error));
     app.quit();
   }
