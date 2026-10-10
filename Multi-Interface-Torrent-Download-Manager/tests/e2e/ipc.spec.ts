@@ -37,9 +37,9 @@ test.describe('Electron runtime, preload bridge and torrent workflow', () => {
     }
   });
 
-  test('user can add a generated local torrent from the actual Add Torrent dialog', async () => {
+  test('Browse buttons select a folder and torrent file, then add it to the real engine', async () => {
     const running = await launchElectronApp();
-    const { page, profileDir } = running;
+    const { page, profileDir, app } = running;
     const pageErrors: string[] = [];
     page.on('pageerror', error => pageErrors.push(error.message));
 
@@ -51,21 +51,47 @@ test.describe('Electron runtime, preload bridge and torrent workflow', () => {
       writeFileSync(payloadPath, 'MultiTorrent local end-to-end fixture.');
 
       const torrent = await new Promise<Buffer>((resolve, reject) => {
-        createTorrent(payloadPath, { announceList: [], pieceLength: 16384 }, (error, value) => {
+        createTorrent(payloadPath, {
+          name: 'test-file.txt',
+          announceList: [],
+          pieceLength: 16384,
+        }, (error, value) => {
           if (error) reject(error);
           else resolve(value);
         });
       });
       writeFileSync(torrentPath, torrent);
 
-      await page.getByRole('button', { name: '+ Add Torrent' }).click();
-      const dialog = page.getByRole('dialog', { name: 'Add Torrent' });
-      await expect(dialog).toBeVisible();
-      await dialog.getByLabel('Save Location').fill(downloadPath);
-      await dialog.getByLabel('Torrent File or Magnet Link').fill(torrentPath);
-      await dialog.getByRole('button', { name: 'Add Torrent' }).click();
+      // Stub only the native OS picker response. The button, preload, IPC handler,
+      // path propagation, parser and torrent-engine addition remain real.
+      await app.evaluate(({ dialog }, selectedPaths: string[]) => {
+        const original = dialog.showOpenDialog;
+        dialog.showOpenDialog = (async (...args: unknown[]) => {
+          const rawOptions = args[args.length - 1];
+          const properties = rawOptions && typeof rawOptions === 'object' && 'properties' in rawOptions
+            ? rawOptions.properties
+            : [];
+          const pickDirectory = Array.isArray(properties) && properties.includes('openDirectory');
+          return {
+            canceled: false,
+            filePaths: [selectedPaths[pickDirectory ? 0 : 1]],
+          };
+        }) as unknown as typeof original;
+      }, [downloadPath, torrentPath]);
 
-      await expect(dialog).toBeHidden({ timeout: 15000 });
+      await page.getByRole('button', { name: '+ Add Torrent' }).click();
+      const addDialog = page.getByRole('dialog', { name: 'Add Torrent' });
+      await expect(addDialog).toBeVisible();
+
+      await addDialog.getByRole('button', { name: 'Browse download folder' }).click();
+      await expect(addDialog.getByLabel('Save Location')).toHaveValue(downloadPath);
+
+      await addDialog.getByRole('button', { name: 'Choose File' }).click();
+      await expect(addDialog.getByLabel('Torrent File or Magnet Link')).toHaveValue(torrentPath);
+      await expect(addDialog.getByText('test-file.txt', { exact: true })).toBeVisible();
+
+      await addDialog.getByRole('button', { name: 'Add Torrent' }).click();
+      await expect(addDialog).toBeHidden({ timeout: 15000 });
       await expect(page.getByText('test-file.txt', { exact: true })).toBeVisible({ timeout: 15000 });
       expect(pageErrors).toEqual([]);
     } finally {
