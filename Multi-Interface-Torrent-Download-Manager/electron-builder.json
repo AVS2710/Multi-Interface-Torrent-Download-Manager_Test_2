@@ -1,6 +1,7 @@
 {
-  "appId": "com.example.multitorrent",
+  "appId": "io.github.avs2710.multitorrent",
   "productName": "MultiTorrent",
+  "artifactName": "MultiTorrent-${version}-${arch}.${ext}",
   "directories": {
     "output": "release"
   },
@@ -8,13 +9,16 @@
     "dist/**/*",
     "package.json"
   ],
-  "mac": {
-    "category": "public.app-category.utilities"
-  },
-  "win": {
-    "target": "nsis"
-  },
+  "asar": true,
+  "asarUnpack": [
+    "**/*.node"
+  ],
+  "npmRebuild": true,
   "linux": {
-    "target": "AppImage"
+    "target": ["AppImage"],
+    "icon": "build/icons/",
+    "category": "Network",
+    "synopsis": "Multi-interface BitTorrent client",
+    "description": "A desktop BitTorrent client with configurable outgoing network interfaces."
   }
 }

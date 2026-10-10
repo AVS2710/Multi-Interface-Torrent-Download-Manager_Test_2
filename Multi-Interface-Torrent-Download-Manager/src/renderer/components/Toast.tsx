@@ -1,23 +1,22 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 
 const Toast: React.FC = () => {
   const [message, setMessage] = useState<string | null>(null);
 
   useEffect(() => {
-    const torrentApi = (window as unknown as { torrentApi?: { subscribeToToasts: (cb: (toast: { message: string }) => void) => void, unsubscribeFromToasts: () => void } }).torrentApi;
-    if (torrentApi) {
-      torrentApi.subscribeToToasts((data) => {
-        setMessage(data.message);
-        setTimeout(() => setMessage(null), 3000);
-      });
-      return () => torrentApi.unsubscribeFromToasts();
-    }
+    const api = window.torrentApi;
+    if (!api) return;
+
+    api.subscribeToToasts(toast => {
+      setMessage(toast.message);
+      window.setTimeout(() => setMessage(null), 3500);
+    });
+    return () => api.unsubscribeFromToasts();
   }, []);
 
   if (!message) return null;
-
   return (
-    <div className="fixed bottom-4 right-4 bg-gray-800 text-white p-4 rounded shadow-lg">
+    <div role="status" aria-live="polite" className="fixed bottom-4 right-4 z-[60] bg-gray-800 text-white p-4 rounded shadow-lg max-w-md">
       {message}
     </div>
   );

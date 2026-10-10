@@ -1,0 +1,83 @@
+name: Linux AppImage
+
+on:
+  push:
+    branches: ["main", "fix/**"]
+    paths:
+      - "Multi-Interface-Torrent-Download-Manager/**"
+      - ".github/workflows/linux-appimage.yml"
+  pull_request:
+    paths:
+      - "Multi-Interface-Torrent-Download-Manager/**"
+      - ".github/workflows/linux-appimage.yml"
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    defaults:
+      run:
+        working-directory: Multi-Interface-Torrent-Download-Manager
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: Multi-Interface-Torrent-Download-Manager/package-lock.json
+      - name: Install native and Electron runtime dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential pkg-config libtorrent-rasterbar-dev libsqlite3-dev xvfb libnspr4 libnss3 libatk-bridge2.0-0 libgtk-3-0 libxkbcommon0 libasound2 libatspi2.0-0 libcups2 libdrm2 libgbm1 libxshmfence1 libxrandr2 libxcomposite1 libxdamage1 libxfixes3 libxrender1 libxext6 libx11-xcb1 libxss1 libpango-1.0-0 libcairo2 libatk1.0-0 libgdk-pixbuf2.0-0
+      - name: Install dependencies
+        run: npm ci
+      - name: Ensure Electron binary is installed
+        run: |
+          unset ELECTRON_SKIP_BINARY_DOWNLOAD ELECTRON_SKIP_DOWNLOAD
+          node node_modules/electron/install.js
+          node - <<'NODE'
+          const fs = require('node:fs');
+          const electronPath = require('electron');
+          if (typeof electronPath !== 'string' || !fs.existsSync(electronPath)) {
+            throw new Error(`Electron binary is missing or unreadable: ${String(electronPath)}`);
+          }
+          console.log(`Electron binary ready: ${electronPath}`);
+          NODE
+      - name: Rebuild SQLite native module for the runner's glibc
+        run: npm rebuild sqlite3 --build-from-source
+      - name: Verify SQLite native module
+        run: node -e "require('sqlite3'); console.log('SQLite native module loaded successfully')"
+      - name: Type check
+        run: npm run typecheck
+      - name: Lint
+        run: npm run lint
+      - name: Unit tests
+        run: npm run test:unit
+      - name: Integration tests
+        run: npm run test:integration
+      - name: Build production application
+        run: npm run build
+      - name: Electron end-to-end tests
+        id: e2e
+        run: xvfb-run -a npm run test:e2e
+      - name: Upload Playwright diagnostics on failure
+        if: failure() && steps.e2e.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-diagnostics
+          path: |
+            Multi-Interface-Torrent-Download-Manager/test-results/
+            Multi-Interface-Torrent-Download-Manager/playwright-report/
+          if-no-files-found: warn
+          retention-days: 7
+      - name: Package Linux AppImage
+        run: npm run package:linux
+      - name: Upload AppImage
+        uses: actions/upload-artifact@v4
+        with:
+          name: MultiTorrent-Linux-AppImage
+          path: Multi-Interface-Torrent-Download-Manager/release/*.AppImage
+          if-no-files-found: error
+          retention-days: 14
