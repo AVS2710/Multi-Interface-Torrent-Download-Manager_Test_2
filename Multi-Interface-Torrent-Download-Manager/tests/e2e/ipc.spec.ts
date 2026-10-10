@@ -12,15 +12,36 @@ const launchApp = (userDataDir?: string) => electron.launch({
     ...process.env,
     NODE_ENV: 'production',
     ELECTRON_DISABLE_SECURITY_WARNINGS: 'true',
+    ELECTRON_ENABLE_LOGGING: '1',
   },
   timeout: 30_000,
 });
+
+async function waitForFirstWindow(app: Awaited<ReturnType<typeof launchApp>>) {
+  const child = app.process();
+  const output: string[] = [];
+  child.stdout?.on('data', (chunk: Buffer) => output.push(chunk.toString()));
+  child.stderr?.on('data', (chunk: Buffer) => output.push(chunk.toString()));
+
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(() => {
+      reject(new Error(`Electron did not create a window within 20 seconds. Process output:\\n${output.join('') || '(no process output captured)'}`));
+    }, 20_000);
+  });
+
+  try {
+    return await Promise.race([app.firstWindow(), timeout]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
 
 test.describe('Electron IPC and Preload Bridge', () => {
   test('renderer loads the sandboxed preload and invokes getNetworks over IPC', async () => {
     const app = await launchApp();
     try {
-      const page = await app.firstWindow();
+      const page = await waitForFirstWindow(app);
       await page.waitForLoadState('domcontentloaded');
       await expect(page.getByRole('heading', { name: 'MultiTorrent' })).toBeVisible();
 
