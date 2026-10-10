@@ -231,20 +231,21 @@ app.on('before-quit', event => {
   if (shutdownStarted) return;
   shutdownStarted = true;
 
-  // Prevent a native engine call or SQLite cleanup from keeping the app alive
-  // forever. Start the fallback timer before cleanup and keep the native service
-  // disposal path non-blocking.
+  // Native libtorrent threads can keep Electron's Node process alive even after
+  // app.exit(). Close SQLite on the normal path, but keep a bounded process-exit
+  // fallback armed until the process actually terminates.
   event.preventDefault();
   const shutdownTimeout = setTimeout(() => {
-    console.error('Timed out while closing SQLite; exiting Electron to avoid a stuck process.');
-    app.exit(0);
+    console.error('Shutdown deadline exceeded; forcing process exit after cleanup timeout.');
+    process.exit(0);
   }, 2500);
 
   torrentService.dispose();
   void closeDb()
     .catch(error => console.error('Failed to close the application database during shutdown:', error))
     .finally(() => {
-      clearTimeout(shutdownTimeout);
+      // Do not clear shutdownTimeout here: app.exit() may not terminate while
+      // native engine handles remain, and the timeout is our final fail-safe.
       app.exit(0);
     });
 });
