@@ -15,7 +15,7 @@ $nativeRoot = Join-Path $runnerTemp ("multitorrent-porla-libtorrent-" + $sourceC
 # This script is intentionally idempotent: package:win invokes it too, and
 # should reuse a native binary already compiled earlier in the same workflow.
 if (Test-Path $bindingFile) {
-    & node -e "const lt=require('@porla/libtorrent'); if(typeof lt.Session!=='function') process.exit(1); new lt.Session(); console.log('Windows libtorrent binding already loads.');"
+    & node -e "const lt=require('@porla/libtorrent'); if(typeof lt.Session!=='function'||typeof lt.AddTorrentParams!=='function') process.exit(1); const s=new lt.Session(); s.post_torrent_updates(); s.dispose(); console.log('Windows libtorrent compatibility adapter already loads.');"
     if ($LASTEXITCODE -eq 0) {
         Write-Host 'Using the already-built Windows libtorrent binding.'
         exit 0
@@ -90,15 +90,69 @@ $targetDir = Split-Path -Parent $bindingFile
 New-Item -ItemType Directory -Path $targetDir -Force | Out-Null
 Copy-Item -LiteralPath $builtBinding -Destination $bindingFile -Force
 
-# npm's published loader only has prebuild metadata for platforms shipped by
-# the package. Point this Windows build at the N-API binary compiled above.
+# Adapt the legacy native exports to the capitalized/EventEmitter API the
+# desktop app uses. The N-API addon itself exposes lowercase class names and
+# delivers libtorrent alerts through pop_alerts(), not EventEmitter callbacks.
 $loader = @'
 'use strict';
 const path = require('node:path');
-module.exports = require(path.join(__dirname, 'prebuilds', process.platform + '-' + process.arch, 'node-napi.node'));
+const { EventEmitter } = require('node:events');
+const native = require(path.join(__dirname, 'prebuilds', process.platform + '-' + process.arch, 'node-napi.node'));
+
+class Session extends EventEmitter {
+  constructor(...args) {
+    super();
+    this._nativeSession = new native.session(...args);
+    this._alertTimer = setInterval(() => this._drainAlerts(), 100);
+    this._alertTimer.unref?.();
+  }
+
+  _drainAlerts() {
+    let alerts;
+    try {
+      alerts = this._nativeSession.pop_alerts();
+    } catch (error) {
+      this.emit('adapter_error', error);
+      return;
+    }
+    if (!Array.isArray(alerts)) return;
+    for (const alert of alerts) {
+      const rawName = typeof alert?.what === 'string' ? alert.what : '';
+      if (!rawName) continue;
+      const eventName = rawName.replace(/_alert$/, '');
+      this.emit(eventName, alert);
+      if (eventName !== rawName) this.emit(rawName, alert);
+    }
+  }
+
+  add_torrent(...args) { return this._nativeSession.add_torrent(...args); }
+  async_add_torrent(...args) { return this._nativeSession.async_add_torrent(...args); }
+  get_torrents(...args) { return this._nativeSession.get_torrents(...args); }
+  post_torrent_updates(...args) { return this._nativeSession.post_torrent_updates(...args); }
+  apply_settings(...args) { return this._nativeSession.apply_settings(...args); }
+  remove_torrent(...args) { return this._nativeSession.remove_torrent(...args); }
+  pause(...args) { return this._nativeSession.pause(...args); }
+  resume(...args) { return this._nativeSession.resume(...args); }
+
+  dispose() {
+    clearInterval(this._alertTimer);
+    try { this._nativeSession.pause(); } catch { /* process teardown */ }
+    this.removeAllListeners();
+  }
+}
+
+module.exports = {
+  ...native,
+  Session,
+  AddTorrentParams: native.add_torrent_params,
+  TorrentInfo: native.torrent_info,
+  TorrentHandle: native.torrent_handle,
+  TorrentStatus: native.torrent_status,
+  parse_magnet_uri: native.parse_magnet_uri,
+};
 '@
-Set-Content -LiteralPath $loaderFile -Value $loader -Encoding utf8
+[System.IO.File]::WriteAllText($loaderFile, $loader, [System.Text.UTF8Encoding]::new($false))
 
 Write-Host 'Verifying the compiled libtorrent binding.'
-& node -e "const lt=require('@porla/libtorrent'); if(typeof lt.Session!=='function'||typeof lt.TorrentInfo!=='function'||typeof lt.AddTorrentParams!=='function') throw new Error('Required native exports are missing'); const session=new lt.Session(); session.post_torrent_updates(); console.log('Windows libtorrent native binding loaded and session initialized.');"
-if ($LASTEXITCODE -ne 0) { throw 'The compiled Windows native libtorrent binding failed to load or initialize.' }
+& node -e "const lt=require('@porla/libtorrent'); if(typeof lt.Session!=='function'||typeof lt.TorrentInfo!=='function'||typeof lt.AddTorrentParams!=='function'||typeof lt.parse_magnet_uri!=='function') throw new Error('Required native exports are missing'); const session=new lt.Session(); session.post_torrent_updates(); session.dispose(); console.log('Windows libtorrent compatibility adapter loaded and session initialized.');"
+if ($LASTEXITCODE -ne 0) { throw 'The compiled Windows libtorrent adapter failed to load or initialize.' }

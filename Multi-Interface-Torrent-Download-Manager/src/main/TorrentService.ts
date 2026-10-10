@@ -144,7 +144,20 @@ export class TorrentService {
       // the binding may emit the add_torrent event synchronously or asynchronously.
       this.pendingAdds.push(pending);
       try {
-        this.session.add_torrent(params); // This binding returns void; synchronize the handle when its event fires.
+        // Some bindings return the native handle synchronously; others emit
+        // add_torrent asynchronously. Support both APIs without double-resolving.
+        const returnedHandle: unknown = this.session.add_torrent(params);
+        if (isTorrentHandle(returnedHandle)) {
+          const id = returnedHandle.id();
+          this.torrents.set(id, returnedHandle);
+          const pendingIndex = this.pendingAdds.indexOf(pending);
+          if (pendingIndex >= 0) {
+            this.pendingAdds.splice(pendingIndex, 1);
+            clearTimeout(pending.timer);
+            pending.resolve(id);
+          }
+          this.publishState();
+        }
       } catch (error) {
         clearTimeout(pending.timer);
         const index = this.pendingAdds.indexOf(pending);
@@ -211,5 +224,12 @@ export class TorrentService {
       pending.reject(new Error('Torrent service is shutting down.'));
     }
     this.pendingAdds.length = 0;
+
+    const session = this.session as unknown as { dispose?: () => void };
+    try {
+      session.dispose?.();
+    } catch (error) {
+      console.error('Failed to dispose the native torrent session:', error);
+    }
   }
 }
