@@ -70,6 +70,7 @@ async function waitForRenderer(page: Page, output: string[]): Promise<void> {
       `Electron output:\\n${output.join('') || '(no process output captured)'}\\n` +
       `Renderer errors:\\n${rendererErrors.join('\\n') || '(none captured)'}\\n` +
       String(error),
+      { cause: error },
     );
   }
 }
