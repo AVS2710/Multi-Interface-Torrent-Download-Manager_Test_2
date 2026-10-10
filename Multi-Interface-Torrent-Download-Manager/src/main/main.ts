@@ -11,6 +11,7 @@ import {
   saveSelectedNetwork,
   getSavedSettings,
   saveSetting,
+  closeDb,
   type SelectedNetwork,
 } from './db.js';
 
@@ -225,7 +226,18 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
 });
 
-app.on('before-quit', () => torrentService.dispose());
+let shutdownInProgress = false;
+app.on('before-quit', event => {
+  if (shutdownInProgress) return;
+
+  // Keep Electron alive until native/service timers and SQLite are released.
+  event.preventDefault();
+  shutdownInProgress = true;
+  torrentService.dispose();
+  void closeDb()
+    .catch(error => console.error('Failed to close the application database:', error))
+    .finally(() => app.quit());
+});
 
 ipcMain.handle('get-networks', async () => {
   const interfaces = await networkManager.getHealthyInterfaces();

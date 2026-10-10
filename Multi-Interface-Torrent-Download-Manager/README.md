@@ -22,6 +22,17 @@ chmod +x release/MultiTorrent-*.AppImage
 
 The application is configured to use Electron's sandboxed, CommonJS preload bundle and an isolated renderer. Do not add `--no-sandbox` to the packaged application's launch command.
 
+## Windows installer
+
+The Windows x64 installer is built on a native Windows runner so native Node modules are rebuilt for the correct platform. In a Windows developer environment with the C++ build tools required by the libtorrent binding:
+
+```powershell
+npm ci
+npm run package:win
+```
+
+The installer is written under `release/MultiTorrent-1.0.0-x64.exe` (the exact artifact suffix can vary). The installer is configured for a per-user installation and allows the install directory to be selected.
+
 ## Development
 
 ```bash

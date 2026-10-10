@@ -1,0 +1,90 @@
+name: Windows Installer
+
+on:
+  push:
+    branches: ["main", "fix/**"]
+    paths:
+      - "Multi-Interface-Torrent-Download-Manager/**"
+      - ".github/workflows/windows-installer.yml"
+  pull_request:
+    paths:
+      - "Multi-Interface-Torrent-Download-Manager/**"
+      - ".github/workflows/windows-installer.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: Multi-Interface-Torrent-Download-Manager
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: Multi-Interface-Torrent-Download-Manager/package-lock.json
+
+      - name: Verify native build tools
+        shell: pwsh
+        run: |
+          node --version
+          npm --version
+          cmake --version
+          if (-not (Get-Command cl.exe -ErrorAction SilentlyContinue)) {
+            Write-Host "MSVC compiler is provided through the GitHub Actions Visual Studio environment; native dependency install will validate the toolchain."
+          }
+
+      - name: Install dependencies and native bindings
+        run: npm ci
+
+      - name: Verify native modules load
+        run: node --input-type=module -e "import lt from '@porla/libtorrent'; if (typeof lt.Session !== 'function') process.exit(1); require('sqlite3'); console.log('Native libtorrent and SQLite modules load on Windows.');"
+
+      - name: Type check
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Unit tests
+        run: npm run test:unit
+
+      - name: Integration tests
+        run: npm run test:integration
+
+      - name: Build production application
+        run: npm run build
+
+      - name: Electron end-to-end tests
+        id: e2e
+        run: npm run test:e2e
+
+      - name: Upload Playwright diagnostics on failure
+        if: failure() && steps.e2e.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-playwright-diagnostics
+          path: |
+            Multi-Interface-Torrent-Download-Manager/test-results/
+            Multi-Interface-Torrent-Download-Manager/playwright-report/
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Package Windows installer
+        run: npm run package:win
+
+      - name: Upload Windows installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: MultiTorrent-Windows-x64-Installer
+          path: Multi-Interface-Torrent-Download-Manager/release/*.exe
+          if-no-files-found: error
+          retention-days: 14

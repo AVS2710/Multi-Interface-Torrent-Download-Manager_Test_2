@@ -15,10 +15,29 @@
   ],
   "npmRebuild": true,
   "linux": {
-    "target": ["AppImage"],
+    "target": [
+      "AppImage"
+    ],
     "icon": "build/icons/",
     "category": "Network",
     "synopsis": "Multi-interface BitTorrent client",
     "description": "A desktop BitTorrent client with configurable outgoing network interfaces."
+  },
+  "win": {
+    "target": [
+      {
+        "target": "nsis",
+        "arch": [
+          "x64"
+        ]
+      }
+    ]
+  },
+  "nsis": {
+    "oneClick": false,
+    "perMachine": false,
+    "allowToChangeInstallationDirectory": true,
+    "createDesktopShortcut": true,
+    "createStartMenuShortcut": true
   }
 }

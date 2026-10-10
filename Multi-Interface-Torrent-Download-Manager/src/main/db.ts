@@ -92,3 +92,11 @@ export async function saveSetting(key: string, value: string): Promise<void> {
     value
   );
 }
+
+
+/** Close SQLite cleanly during Electron shutdown and test teardown. */
+export async function closeDb(): Promise<void> {
+  const current = dbInstance;
+  dbInstance = null;
+  if (current) await current.close();
+}
